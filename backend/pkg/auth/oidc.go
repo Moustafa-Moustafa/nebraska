@@ -17,6 +17,7 @@ import (
 type OIDCAuthConfig struct {
 	DefaultTeamID string
 	IssuerURL     string
+	Audience      string
 	AdminRoles    []string
 	ViewerRoles   []string
 	RolesPath     string
@@ -43,9 +44,17 @@ func NewOIDCAuthenticator(config *OIDCAuthConfig) (Authenticator, error) {
 
 	// Configure verifier for JWT access tokens (not ID tokens)
 	oidcProviderConfig := &oidc.Config{
-		SkipClientIDCheck: true, // Access tokens don't have client_id claim
-		SkipExpiryCheck:   false,
-		SkipIssuerCheck:   false,
+		SkipExpiryCheck: false,
+		SkipIssuerCheck: false,
+	}
+
+	// If audience is configured, validate it. Otherwise skip client ID check
+	// for backward compatibility.
+	if config.Audience != "" {
+		oidcProviderConfig.ClientID = config.Audience
+		oidcProviderConfig.SkipClientIDCheck = false
+	} else {
+		oidcProviderConfig.SkipClientIDCheck = true
 	}
 
 	verifier := provider.Verifier(oidcProviderConfig)
