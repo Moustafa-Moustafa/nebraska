@@ -27,7 +27,7 @@ func TestListChannels(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get channels from DB for app
-		channelsDB, err := db.GetChannels(app.ID, 1, 10)
+		channelsDB, err := queries(db).GetChannels(app.ID, 1, 10)
 		require.NoError(t, err)
 		require.NotNil(t, channelsDB)
 
@@ -55,7 +55,7 @@ func TestListChannels(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get channels from DB for app
-		channelsDB, err := db.GetChannels(app.ID, 1, 10)
+		channelsDB, err := queries(db).GetChannels(app.ID, 1, 10)
 		require.NoError(t, err)
 		require.NotNil(t, channelsDB)
 
@@ -98,7 +98,7 @@ func TestCreateChannel(t *testing.T) {
 		assert.Equal(t, channelName, channel.Name)
 
 		// check channel exists in DB
-		channelsDB, err := db.GetChannel(channel.ID)
+		channelsDB, err := queries(db).GetChannel(channel.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, channelsDB)
 		assert.Equal(t, channelName, channelsDB.Name)
@@ -126,7 +126,7 @@ func TestCreateChannel(t *testing.T) {
 		assert.Equal(t, channelName, channel.Name)
 
 		// check channel exists in DB
-		channelsDB, err := db.GetChannel(channel.ID)
+		channelsDB, err := queries(db).GetChannel(channel.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, channelsDB)
 		assert.Equal(t, channelName, channelsDB.Name)
@@ -206,7 +206,7 @@ func TestUpdateChannel(t *testing.T) {
 		assert.Equal(t, channelName, channel.Name)
 
 		// check name in DB
-		updatedChannelDB, err := db.GetChannel(channel.ID)
+		updatedChannelDB, err := queries(db).GetChannel(channel.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, channelName, updatedChannelDB.Name)
@@ -242,7 +242,7 @@ func TestUpdateChannel(t *testing.T) {
 		assert.Equal(t, channelName, channel.Name)
 
 		// check name in DB
-		updatedChannelDB, err := db.GetChannel(channel.ID)
+		updatedChannelDB, err := queries(db).GetChannel(channel.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, channelName, updatedChannelDB.Name)
@@ -264,7 +264,7 @@ func TestDeleteChannel(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
-		channel, err := db.GetChannel(channelDB.ID)
+		channel, err := queries(db).GetChannel(channelDB.ID)
 		assert.Error(t, err)
 		assert.Nil(t, channel)
 	})
@@ -282,7 +282,7 @@ func TestDeleteChannel(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
-		channel, err := db.GetChannel(channelDB.ID)
+		channel, err := queries(db).GetChannel(channelDB.ID)
 		assert.Error(t, err)
 		assert.Nil(t, channel)
 	})

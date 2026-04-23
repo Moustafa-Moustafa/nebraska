@@ -19,17 +19,17 @@ func (h *Handler) PaginatePackages(ctx echo.Context, appIDorProductID string, pa
 	if params.Perpage == nil {
 		params.Perpage = &defaultPerPage
 	}
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	totalCount, err := h.db.GetPackagesCount(appID, params.SearchVersion)
+	totalCount, err := h.runtime.GetPackagesCount(appID, params.SearchVersion)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("getPackages count - encoding packages")
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
-	pkgs, err := h.db.GetPackages(appID, uint64(*params.Page), uint64(*params.Perpage), params.SearchVersion)
+	pkgs, err := h.runtime.GetPackages(appID, uint64(*params.Page), uint64(*params.Perpage), params.SearchVersion)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -42,9 +42,12 @@ func (h *Handler) PaginatePackages(ctx echo.Context, appIDorProductID string, pa
 }
 
 func (h *Handler) CreatePackage(ctx echo.Context, appIDorProductID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
@@ -59,13 +62,13 @@ func (h *Handler) CreatePackage(ctx echo.Context, appIDorProductID string) error
 
 	pkg := packageFromRequest(appID, request.Arch, request.ChannelsBlacklist, request.Description, request.Filename, request.Hash, request.Size, request.Url, request.Version, request.Type, request.FlatcarAction, "", request.ExtraFiles)
 
-	pkg, err = h.db.AddPackage(pkg)
+	pkg, err = h.admin.AddPackage(pkg)
 	if err != nil {
 		l.Error().Err(err).Msgf("addPackage - adding package %v", request)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	pkg, err = h.db.GetPackage(pkg.ID)
+	pkg, err = h.runtime.GetPackage(pkg.ID)
 	if err != nil {
 		l.Error().Err(err).Str("packageID", pkg.ID).Msg("addPackage - getting added package")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -77,7 +80,7 @@ func (h *Handler) CreatePackage(ctx echo.Context, appIDorProductID string) error
 }
 
 func (h *Handler) GetPackage(ctx echo.Context, _ string, packageID string) error {
-	pkg, err := h.db.GetPackage(packageID)
+	pkg, err := h.runtime.GetPackage(packageID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -90,9 +93,12 @@ func (h *Handler) GetPackage(ctx echo.Context, _ string, packageID string) error
 }
 
 func (h *Handler) UpdatePackage(ctx echo.Context, appIDorProductID string, packageID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
@@ -107,7 +113,7 @@ func (h *Handler) UpdatePackage(ctx echo.Context, appIDorProductID string, packa
 
 	pkg := packageFromRequest(appID, request.Arch, request.ChannelsBlacklist, request.Description, request.Filename, request.Hash, request.Size, request.Url, request.Version, request.Type, request.FlatcarAction, packageID, request.ExtraFiles)
 
-	oldPkg, err := h.db.GetPackage(packageID)
+	oldPkg, err := h.runtime.GetPackage(packageID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -116,13 +122,13 @@ func (h *Handler) UpdatePackage(ctx echo.Context, appIDorProductID string, packa
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	err = h.db.UpdatePackage(pkg)
+	err = h.admin.UpdatePackage(pkg)
 	if err != nil {
 		l.Error().Err(err).Msgf("updatePackage - updating package %+v", request)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	pkg, err = h.db.GetPackage(packageID)
+	pkg, err = h.runtime.GetPackage(packageID)
 	if err != nil {
 		l.Error().Err(err).Str("packageID", packageID).Msg("updatePackage - getting old package to update")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -134,15 +140,18 @@ func (h *Handler) UpdatePackage(ctx echo.Context, appIDorProductID string, packa
 }
 
 func (h *Handler) DeletePackage(ctx echo.Context, _ string, packageID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	pkg, err := h.db.GetPackage(packageID)
+	pkg, err := h.runtime.GetPackage(packageID)
 	if err != nil {
 		l.Error().Err(err).Str("packageID", packageID).Msg("deletePackage - getting package to delete")
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	err = h.db.DeletePackage(packageID)
+	err = h.admin.DeletePackage(packageID)
 	if err != nil {
 		l.Error().Err(err).Str("packageID", packageID).Msg("deletePackage")
 		return ctx.NoContent(http.StatusInternalServerError)

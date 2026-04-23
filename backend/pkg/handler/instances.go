@@ -10,12 +10,12 @@ import (
 )
 
 func (h *Handler) GetInstance(ctx echo.Context, appIDorProductID string, _ string, instanceID string) error {
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	instance, err := h.db.GetInstance(instanceID, appID)
+	instance, err := h.runtime.GetInstance(instanceID, appID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -31,12 +31,12 @@ func (h *Handler) GetInstanceStatusHistory(ctx echo.Context, appIDorProductID st
 	if params.Limit != nil {
 		limit = *params.Limit
 	}
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	instanceStatusHistory, err := h.db.GetInstanceStatusHistory(instanceID, appID, groupID, uint64(limit))
+	instanceStatusHistory, err := h.runtime.GetInstanceStatusHistory(instanceID, appID, groupID, uint64(limit))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -58,7 +58,7 @@ func (h *Handler) UpdateInstance(ctx echo.Context, instanceID string) error {
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 
-	instance, err := h.db.UpdateInstance(instanceID, request.Alias)
+	instance, err := h.runtime.UpdateInstance(instanceID, request.Alias)
 	if err != nil {
 		l.Error().Err(err).Str("instance", instanceID).Msgf("updateInstance - updating params %s", request.Alias)
 		return ctx.NoContent(http.StatusInternalServerError)

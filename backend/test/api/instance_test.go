@@ -33,7 +33,7 @@ func TestListInstances(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusOK, "json", &instances)
 
-		count, err := db.GetInstancesCount(api.InstancesQueryParams{
+		count, err := queries(db).GetInstancesCount(api.InstancesQueryParams{
 			ApplicationID: appWithInstance.ID,
 			GroupID:       appWithInstance.Groups[0].ID,
 		}, "30d")
@@ -41,7 +41,7 @@ func TestListInstances(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, len(instances.Instances), int(count))
 
-		instancesDB, err := db.GetInstances(api.InstancesQueryParams{
+		instancesDB, err := queries(db).GetInstances(api.InstancesQueryParams{
 			ApplicationID: appWithInstance.ID,
 			GroupID:       appWithInstance.Groups[0].ID,
 			Status:        0,
@@ -71,7 +71,7 @@ func TestGetInstanceCount(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusOK, "json", &instancesCountResp)
 
-		count, err := db.GetInstancesCount(api.InstancesQueryParams{
+		count, err := queries(db).GetInstancesCount(api.InstancesQueryParams{
 			ApplicationID: appWithInstance.ID,
 			GroupID:       appWithInstance.Groups[0].ID,
 		}, "30d")
@@ -92,7 +92,7 @@ func TestGetInstance(t *testing.T) {
 
 		// create instance for app
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// fetch instance from API
@@ -116,7 +116,7 @@ func TestGetInstance(t *testing.T) {
 
 		// create instance for app
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// fetch instance from API
@@ -143,15 +143,15 @@ func TestGetInstanceStatusHistory(t *testing.T) {
 
 		// create instance for app
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// GetUpdatePackage
-		_, err = db.GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
+		_, err = newRuntimeForTest(t, db).GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// create event for instance
-		err = db.RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
+		err = newRuntimeForTest(t, db).RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
 		require.NoError(t, err)
 
 		// fetch instance status_history
@@ -177,15 +177,15 @@ func TestGetInstanceStatusHistory(t *testing.T) {
 
 		// create instance for app
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// GetUpdatePackage
-		_, err = db.GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
+		_, err = newRuntimeForTest(t, db).GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// create event for instance
-		err = db.RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
+		err = newRuntimeForTest(t, db).RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
 		require.NoError(t, err)
 
 		// fetch instance status_history
@@ -214,7 +214,7 @@ func TestUpdateInstance(t *testing.T) {
 
 		// create instance for app
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// fetch instance from API
@@ -232,7 +232,7 @@ func TestUpdateInstance(t *testing.T) {
 		assert.Equal(t, newAlias, instance.Alias)
 
 		// check alias in DB
-		updatedInstanceDB, err := db.GetInstance(instanceDB.ID, app.ID)
+		updatedInstanceDB, err := queries(db).GetInstance(instanceDB.ID, app.ID)
 		require.NoError(t, err)
 		require.NotNil(t, updatedInstanceDB)
 

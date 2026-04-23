@@ -11,6 +11,11 @@ import (
 )
 
 func (h *Handler) Omaha(ctx echo.Context) error {
+	if h.omahaHandler == nil {
+		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "Omaha service is not available on this instance",
+		})
+	}
 	responseBuffer := new(bytes.Buffer)
 	ctx.Response().Writer.Header().Set("Content-Type", "text/xml")
 	ctx.Request().Body = http.MaxBytesReader(ctx.Response().Writer, ctx.Request().Body, UpdateMaxRequestSize)

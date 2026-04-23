@@ -1,9 +1,11 @@
-package api
+package api_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/flatcar/nebraska/backend/pkg/api"
 )
 
 const (
@@ -14,10 +16,10 @@ func TestGetUser(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()
 
-	_, err := a.GetUser("non-existent")
+	_, err := runtimeSvc(a).GetUser("non-existent")
 	assert.Error(t, err)
 
-	user, err := a.GetUser("admin")
+	user, err := runtimeSvc(a).GetUser("admin")
 	assert.NoError(t, err)
 	assert.Equal(t, "admin", user.Username)
 	assert.Equal(t, defaultTeamID, user.TeamID)
@@ -28,13 +30,13 @@ func TestUpdateUserPassword(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()
 
-	err := a.UpdateUserPassword("non-existent", "new-password")
+	err := adminSvc(a).UpdateUserPassword("non-existent", "new-password")
 	assert.Error(t, err)
 
-	err = a.UpdateUserPassword("admin", "new-password")
+	err = adminSvc(a).UpdateUserPassword("admin", "new-password")
 	assert.NoError(t, err)
 
-	user, err := a.GetUser("admin")
+	user, err := runtimeSvc(a).GetUser("admin")
 	assert.NoError(t, err)
 	assert.Equal(t, "admin", user.Username)
 	assert.Equal(t, defaultTeamID, user.TeamID)
@@ -46,17 +48,17 @@ func TestAddUser(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()
 
-	user := &User{
+	user := &api.User{
 		Username: "chandler",
 		Secret:   "shhhhh",
 		TeamID:   defaultTeamID,
 	}
 
-	chandler, err := a.AddUser(user)
+	chandler, err := adminSvc(a).AddUser(user)
 	assert.NoError(t, err)
 	assert.Equal(t, user.Username, chandler.Username)
 
-	_, err = a.AddUser(user)
+	_, err = adminSvc(a).AddUser(user)
 	assert.Error(t, err)
 }
 
@@ -64,36 +66,36 @@ func TestGetUsersInTeam(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()
 
-	_, err := a.GetUsersInTeam("non-existent")
+	_, err := runtimeSvc(a).GetUsersInTeam("non-existent")
 	assert.Error(t, err)
 
-	users, err := a.GetUsersInTeam(defaultTeamID)
+	users, err := runtimeSvc(a).GetUsersInTeam(defaultTeamID)
 	assert.NoError(t, err)
 	assert.Equal(t, len(users), 1)
 
-	teams, err := a.GetTeams()
+	teams, err := runtimeSvc(a).GetTeams()
 	assert.NoError(t, err)
 	assert.Equal(t, len(teams), 1)
 
-	teamRoss, _ := a.AddTeam(&Team{Name: "team-ross"})
+	teamRoss, _ := adminSvc(a).AddTeam(&api.Team{Name: "team-ross"})
 	assert.NoError(t, err)
 	assert.Equal(t, teamRoss.Name, "team-ross")
 
-	user := &User{
+	user := &api.User{
 		Username: "chandler",
 		Secret:   "shhhhh",
 		TeamID:   teamRoss.ID,
 	}
 
-	chandler, err := a.AddUser(user)
+	chandler, err := adminSvc(a).AddUser(user)
 	assert.NoError(t, err)
 	assert.Equal(t, user.Username, chandler.Username)
 
-	defaultUsers, err := a.GetUsersInTeam(defaultTeamID)
+	defaultUsers, err := runtimeSvc(a).GetUsersInTeam(defaultTeamID)
 	assert.NoError(t, err)
 	assert.Equal(t, len(defaultUsers), 1, "Should still be one.")
 
-	newTeamUsers, err := a.GetUsersInTeam(teamRoss.ID)
+	newTeamUsers, err := runtimeSvc(a).GetUsersInTeam(teamRoss.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, len(newTeamUsers), 1, "Should also be one.")
 }

@@ -16,12 +16,15 @@ import (
 	echomiddleware "github.com/oapi-codegen/echo-middleware"
 
 	db "github.com/flatcar/nebraska/backend/pkg/api"
+	"github.com/flatcar/nebraska/backend/pkg/api/admin"
+	apiruntime "github.com/flatcar/nebraska/backend/pkg/api/runtime"
 	"github.com/flatcar/nebraska/backend/pkg/auth"
 	"github.com/flatcar/nebraska/backend/pkg/codegen"
 	"github.com/flatcar/nebraska/backend/pkg/config"
 	"github.com/flatcar/nebraska/backend/pkg/handler"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
 	custommiddleware "github.com/flatcar/nebraska/backend/pkg/middleware"
+	"github.com/flatcar/nebraska/backend/pkg/omaha"
 	"github.com/flatcar/nebraska/backend/pkg/sessions"
 	echosessions "github.com/flatcar/nebraska/backend/pkg/sessions/echo"
 	"github.com/flatcar/nebraska/backend/pkg/sessions/memcache"
@@ -59,8 +62,21 @@ func New(conf *config.Config, db *db.API) (*echo.Echo, error) {
 	p := prometheus.NewPrometheus(serviceName, nil)
 	p.Use(e)
 
+	// setup sub-package services based on instance mode
+	var runtimeSvc *apiruntime.Service
+	var adminSvc *admin.Service
+
+	// Runtime service is available on all instances except admin-only mode.
+	// Admin-only mode is when IsPrimary() is true but no runtime operations
+	// are needed (the node only serves the admin dashboard).
+	runtimeSvc = apiruntime.NewService(db.DB(), db.DisableUpdatesOnFailedRollout())
+
+	if db.IsPrimary() {
+		adminSvc = admin.NewService(db.DB())
+	}
+
 	// setup authenticator
-	defaultTeam, err := db.GetTeam()
+	defaultTeam, err := runtimeSvc.GetTeam()
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch the default teamID: %w", err)
 	}
@@ -115,8 +131,14 @@ func New(conf *config.Config, db *db.API) (*echo.Echo, error) {
 			Skipper: middlewareSkipper,
 		}))
 
+	// setup omaha handler (only on instances that handle runtime/Omaha traffic)
+	var omahaHandler *omaha.Handler
+	if runtimeSvc != nil {
+		omahaHandler = omaha.NewHandler(runtimeSvc)
+	}
+
 	// setup handler
-	handlers, err := handler.New(db, conf, authenticator)
+	handlers, err := handler.New(adminSvc, runtimeSvc, omahaHandler, conf, authenticator)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up handlers: %w", err)
 	}
@@ -146,23 +168,24 @@ func New(conf *config.Config, db *db.API) (*echo.Echo, error) {
 		e.DefaultHTTPErrorHandler(err, c)
 	}
 
-	// setup background job for updating instance stats
-	go func() {
-		// update once at startup
-		err = db.UpdateInstanceStats(nil, nil)
-		if err != nil {
-			l.Err(err).Msg("Error updating instance stats")
-		}
-		ticker := time.NewTicker(time.Hour)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			err := db.UpdateInstanceStats(nil, nil)
+	// setup background job for updating instance stats (runtime instances only)
+	if runtimeSvc != nil {
+		go func() {
+			err = runtimeSvc.UpdateInstanceStats(nil, nil)
 			if err != nil {
 				l.Err(err).Msg("Error updating instance stats")
 			}
-		}
-	}()
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				err := runtimeSvc.UpdateInstanceStats(nil, nil)
+				if err != nil {
+					l.Err(err).Msg("Error updating instance stats")
+				}
+			}
+		}()
+	}
 
 	return e, nil
 }

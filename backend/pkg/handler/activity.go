@@ -24,7 +24,7 @@ func (h *Handler) PaginateActivity(ctx echo.Context, params codegen.PaginateActi
 
 	var p api.ActivityQueryParams
 	if params.AppIDorProductID != nil {
-		appID, err := h.db.GetAppID(*params.AppIDorProductID)
+		appID, err := h.runtime.GetAppID(*params.AppIDorProductID)
 		if err != nil {
 			return appNotFoundResponse(ctx, *params.AppIDorProductID)
 		}
@@ -50,13 +50,13 @@ func (h *Handler) PaginateActivity(ctx echo.Context, params codegen.PaginateActi
 	p.Page = uint64(*params.Page)
 	p.PerPage = uint64(*params.Perpage)
 
-	totalCount, err := h.db.GetActivityCount(teamID, p)
+	totalCount, err := h.runtime.GetActivityCount(teamID, p)
 	if err != nil {
 		l.Error().Err(err).Str("teamID", teamID).Msgf("getActivity count params %v", p)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	activityEntries, err := h.db.GetActivity(teamID, p)
+	activityEntries, err := h.runtime.GetActivity(teamID, p)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)

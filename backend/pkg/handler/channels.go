@@ -12,7 +12,7 @@ import (
 )
 
 func (h *Handler) PaginateChannels(ctx echo.Context, appIDorProductID string, params codegen.PaginateChannelsParams) error {
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
@@ -25,13 +25,13 @@ func (h *Handler) PaginateChannels(ctx echo.Context, appIDorProductID string, pa
 		params.Perpage = &defaultPerPage
 	}
 
-	totalCount, err := h.db.GetChannelsCount(appID)
+	totalCount, err := h.runtime.GetChannelsCount(appID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("getChannels count - getting channels")
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	channels, err := h.db.GetChannels(appID, uint64(*params.Page), uint64(*params.Perpage))
+	channels, err := h.runtime.GetChannels(appID, uint64(*params.Page), uint64(*params.Perpage))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -43,6 +43,9 @@ func (h *Handler) PaginateChannels(ctx echo.Context, appIDorProductID string, pa
 }
 
 func (h *Handler) CreateChannel(ctx echo.Context, appIDorProductID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
 	var request codegen.ChannelConfig
@@ -52,18 +55,18 @@ func (h *Handler) CreateChannel(ctx echo.Context, appIDorProductID string) error
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 	channel := newChannel(appID, request.Arch, request.Color, request.Name, request.PackageId)
-	_, err = h.db.AddChannel(channel)
+	_, err = h.admin.AddChannel(channel)
 	if err != nil {
 		l.Error().Err(err).Msgf("addChannel channel %v", channel)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	channel, err = h.db.GetChannel(channel.ID)
+	channel, err = h.runtime.GetChannel(channel.ID)
 	if err != nil {
 		l.Error().Err(err).Str("channelID", channel.ID).Msg("addChannel")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -74,7 +77,7 @@ func (h *Handler) CreateChannel(ctx echo.Context, appIDorProductID string) error
 }
 
 func (h *Handler) GetChannel(ctx echo.Context, _ string, channelID string) error {
-	channel, err := h.db.GetChannel(channelID)
+	channel, err := h.runtime.GetChannel(channelID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -86,9 +89,12 @@ func (h *Handler) GetChannel(ctx echo.Context, _ string, channelID string) error
 }
 
 func (h *Handler) UpdateChannel(ctx echo.Context, appIDorProductID string, channelID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
@@ -101,7 +107,7 @@ func (h *Handler) UpdateChannel(ctx echo.Context, appIDorProductID string, chann
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 
-	oldChannel, err := h.db.GetChannel(channelID)
+	oldChannel, err := h.runtime.GetChannel(channelID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -113,13 +119,13 @@ func (h *Handler) UpdateChannel(ctx echo.Context, appIDorProductID string, chann
 	channel := newChannel(appID, request.Arch, request.Color, request.Name, request.PackageId)
 	channel.ID = channelID
 
-	err = h.db.UpdateChannel(channel)
+	err = h.admin.UpdateChannel(channel)
 	if err != nil {
 		l.Error().Err(err).Msgf("updateChannel - updating channel %+v", channel)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	channel, err = h.db.GetChannel(channelID)
+	channel, err = h.runtime.GetChannel(channelID)
 	if err != nil {
 		l.Error().Err(err).Str("channelID", channel.ID).Msg("updateChannel - getting channel updated")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -131,15 +137,18 @@ func (h *Handler) UpdateChannel(ctx echo.Context, appIDorProductID string, chann
 }
 
 func (h *Handler) DeleteChannel(ctx echo.Context, _ string, channelID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	channel, err := h.db.GetChannel(channelID)
+	channel, err := h.runtime.GetChannel(channelID)
 	if err != nil {
 		l.Error().Err(err).Str("channelID", channel.ID).Msg("updateChannel - getting channel to be deleted")
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	err = h.db.DeleteChannel(channelID)
+	err = h.admin.DeleteChannel(channelID)
 	if err != nil {
 		l.Error().Err(err).Str("channelID", channelID).Msg("deleteChannel")
 		return ctx.NoContent(http.StatusInternalServerError)
