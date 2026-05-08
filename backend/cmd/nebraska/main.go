@@ -6,6 +6,8 @@ import (
 	"github.com/rs/zerolog"
 
 	db "github.com/flatcar/nebraska/backend/pkg/api"
+	"github.com/flatcar/nebraska/backend/pkg/api/admin"
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/config"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
 	"github.com/flatcar/nebraska/backend/pkg/metrics"
@@ -65,9 +67,15 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	// setup syncer
-	if conf.EnableSyncer {
-		syncer, err := syncer.Setup(conf, db)
+	// setup admin service (primary only — syncer uses admin writes)
+	var adminSvc *admin.Service
+	if db.IsPrimary() {
+		adminSvc = admin.NewService(db.DB())
+	}
+
+	// setup syncer (primary only — syncs upstream Flatcar packages)
+	if conf.EnableSyncer && adminSvc != nil {
+		syncer, err := syncer.Setup(conf, dbreads.New(db.DB()), adminSvc, db)
 		if err != nil {
 			l.Fatal().
 				Err(err).

@@ -22,7 +22,7 @@ func TestListActivity(t *testing.T) {
 
 		endTime := time.Now()
 		startTime := time.Now().Add(time.Duration(-1 * 24 * 7 * time.Hour))
-		activitiesDB, err := db.GetActivity(teamID, api.ActivityQueryParams{Start: startTime, End: endTime})
+		activitiesDB, err := queries(db).GetActivity(teamID, api.ActivityQueryParams{Start: startTime, End: endTime})
 		require.NoError(t, err)
 		require.NotNil(t, activitiesDB)
 

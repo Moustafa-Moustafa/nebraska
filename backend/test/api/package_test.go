@@ -29,7 +29,7 @@ func TestListPackages(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get packages from DB for app
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -58,7 +58,7 @@ func TestListPackages(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get packages from DB for app
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -104,7 +104,7 @@ func TestCreatePackage(t *testing.T) {
 		assert.Equal(t, packageName, packageResp.Filename.String)
 
 		// check group exists in DB
-		packageDB, err := db.GetPackage(packageResp.ID)
+		packageDB, err := queries(db).GetPackage(packageResp.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, packageDB)
 
@@ -134,7 +134,7 @@ func TestCreatePackage(t *testing.T) {
 		assert.Equal(t, packageName, packageResp.Filename.String)
 
 		// check group exists in DB
-		packageDB, err := db.GetPackage(packageResp.ID)
+		packageDB, err := queries(db).GetPackage(packageResp.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, packageDB)
 
@@ -152,7 +152,7 @@ func TestGetPackage(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -176,7 +176,7 @@ func TestGetPackage(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -203,7 +203,7 @@ func TestUpdatePackage(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -242,7 +242,7 @@ func TestUpdatePackage(t *testing.T) {
 		assert.Equal(t, packageVersion, packageResp.Version)
 
 		// check package version in DB
-		updatedPackageDB, err := db.GetPackage(packageDB.ID)
+		updatedPackageDB, err := queries(db).GetPackage(packageDB.ID)
 		require.NoError(t, err)
 		assert.Equal(t, packageVersion, updatedPackageDB.Version)
 	})
@@ -255,7 +255,7 @@ func TestUpdatePackage(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -294,7 +294,7 @@ func TestUpdatePackage(t *testing.T) {
 		assert.Equal(t, packageVersion, packageResp.Version)
 
 		// check package version in DB
-		updatedPackageDB, err := db.GetPackage(packageDB.ID)
+		updatedPackageDB, err := queries(db).GetPackage(packageDB.ID)
 		require.NoError(t, err)
 		assert.Equal(t, packageVersion, updatedPackageDB.Version)
 	})
@@ -310,7 +310,7 @@ func TestDeletePackage(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -320,7 +320,7 @@ func TestDeletePackage(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
-		packageDB, err := db.GetPackage(packagesDB[0].ID)
+		packageDB, err := queries(db).GetPackage(packagesDB[0].ID)
 		assert.Error(t, err)
 		assert.Nil(t, packageDB)
 	})
@@ -333,7 +333,7 @@ func TestDeletePackage(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get packages from DB for app[0]
-		packagesDB, err := db.GetPackages(app.ID, 1, 10, nil)
+		packagesDB, err := queries(db).GetPackages(app.ID, 1, 10, nil)
 		require.NoError(t, err)
 		require.NotNil(t, packagesDB)
 
@@ -343,7 +343,7 @@ func TestDeletePackage(t *testing.T) {
 
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
-		packageDB, err := db.GetPackage(packagesDB[0].ID)
+		packageDB, err := queries(db).GetPackage(packagesDB[0].ID)
 		assert.Error(t, err)
 		assert.Nil(t, packageDB)
 	})

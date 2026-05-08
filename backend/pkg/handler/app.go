@@ -22,13 +22,13 @@ func (h *Handler) PaginateApps(ctx echo.Context, params codegen.PaginateAppsPara
 		params.Perpage = &defaultPerPage
 	}
 
-	totalCount, err := h.db.GetAppsCount(teamID)
+	totalCount, err := h.runtime.GetAppsCount(teamID)
 	if err != nil {
 		l.Error().Err(err).Str("teamID", teamID).Msg("getApps count - getting apps")
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 
-	apps, err := h.db.GetApps(teamID, uint64(*params.Page), uint64(*params.Perpage))
+	apps, err := h.runtime.GetApps(teamID, uint64(*params.Page), uint64(*params.Perpage))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -41,6 +41,9 @@ func (h *Handler) PaginateApps(ctx echo.Context, params codegen.PaginateAppsPara
 }
 
 func (h *Handler) CreateApp(ctx echo.Context, params codegen.CreateAppParams) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
 	teamID := getTeamID(ctx)
@@ -56,14 +59,14 @@ func (h *Handler) CreateApp(ctx echo.Context, params codegen.CreateAppParams) er
 
 	source := ""
 	if params.CloneFrom != nil {
-		cloneAppID, err := h.db.GetAppID(*params.CloneFrom)
+		cloneAppID, err := h.runtime.GetAppID(*params.CloneFrom)
 		if err != nil {
 			return appNotFoundResponse(ctx, *params.CloneFrom)
 		}
 		source = cloneAppID
 	}
 
-	app, err = h.db.AddAppCloning(app, source)
+	app, err = h.admin.AddAppCloning(app, source)
 	if err != nil {
 		sourceAppID := "none"
 		if params.CloneFrom != nil {
@@ -73,7 +76,7 @@ func (h *Handler) CreateApp(ctx echo.Context, params codegen.CreateAppParams) er
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	app, err = h.db.GetApp(app.ID)
+	app, err = h.runtime.GetApp(app.ID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", app.ID).Msg("addApp - getting added app")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -84,12 +87,12 @@ func (h *Handler) CreateApp(ctx echo.Context, params codegen.CreateAppParams) er
 }
 
 func (h *Handler) GetApp(ctx echo.Context, appIDorProductID string) error {
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	app, err := h.db.GetApp(appID)
+	app, err := h.runtime.GetApp(appID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ctx.NoContent(http.StatusNotFound)
@@ -101,6 +104,9 @@ func (h *Handler) GetApp(ctx echo.Context, appIDorProductID string) error {
 }
 
 func (h *Handler) UpdateApp(ctx echo.Context, appIDorProductID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
 	var request codegen.AppConfig
@@ -110,12 +116,12 @@ func (h *Handler) UpdateApp(ctx echo.Context, appIDorProductID string) error {
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	oldApp, err := h.db.GetApp(appID)
+	oldApp, err := h.runtime.GetApp(appID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("updateApp - getting old app to update")
 		return ctx.NoContent(http.StatusBadRequest)
@@ -123,13 +129,13 @@ func (h *Handler) UpdateApp(ctx echo.Context, appIDorProductID string) error {
 
 	app := appFromRequest(request.Name, request.Description, appID, "", request.ProductId)
 
-	err = h.db.UpdateApp(app)
+	err = h.admin.UpdateApp(app)
 	if err != nil {
 		l.Error().Err(err).Msgf("updatedApp - updating app %s", appID)
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	app, err = h.db.GetApp(appID)
+	app, err = h.runtime.GetApp(appID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("updateApp - getting updated app")
 		return ctx.NoContent(http.StatusInternalServerError)
@@ -141,20 +147,23 @@ func (h *Handler) UpdateApp(ctx echo.Context, appIDorProductID string) error {
 }
 
 func (h *Handler) DeleteApp(ctx echo.Context, appIDorProductID string) error {
+	if err := h.requirePrimary(ctx); err != nil {
+		return err
+	}
 	l := loggerWithUsername(l, ctx)
 
-	appID, err := h.db.GetAppID(appIDorProductID)
+	appID, err := h.runtime.GetAppID(appIDorProductID)
 	if err != nil {
 		return appNotFoundResponse(ctx, appIDorProductID)
 	}
 
-	app, err := h.db.GetApp(appID)
+	app, err := h.runtime.GetApp(appID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("deleteApp - getting app to delete")
 		return ctx.NoContent(http.StatusInternalServerError)
 	}
 
-	err = h.db.DeleteApp(appID)
+	err = h.admin.DeleteApp(appID)
 	if err != nil {
 		l.Error().Err(err).Str("appID", appID).Msg("deleteApp")
 		return ctx.NoContent(http.StatusInternalServerError)

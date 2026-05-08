@@ -47,7 +47,7 @@ func TestOmaha(t *testing.T) {
 		assert.Equal(t, "omaha: update status ok", omahaResp.Apps[0].UpdateCheck.Status.Error())
 
 		// check if instance exists in the DB
-		instance, err := db.GetInstance(instanceID, app.ID)
+		instance, err := queries(db).GetInstance(instanceID, app.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, instance)
 	})
@@ -78,7 +78,7 @@ func TestOmaha(t *testing.T) {
 		assert.Equal(t, "ok", omahaResp.Apps[0].Ping.Status)
 
 		// check if instance exists in the DB
-		instance, err := db.GetInstance(instanceID, app.ID)
+		instance, err := queries(db).GetInstance(instanceID, app.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, instance)
 	})

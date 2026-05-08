@@ -38,7 +38,7 @@ func TestGroupVersionTimeline(t *testing.T) {
 		httpDo(t, url, method, nil, http.StatusOK, "json", &timelineResponse)
 
 		// get group version timeline from DB
-		timelineDB, _, err := db.GetGroupVersionCountTimeline(appWithInstance.Groups[0].ID, "1d")
+		timelineDB, _, err := queries(db).GetGroupVersionCountTimeline(appWithInstance.Groups[0].ID, "1d")
 		require.NoError(t, err)
 		require.NotNil(t, timelineDB)
 
@@ -89,7 +89,7 @@ func TestGroupVersionBreakdown(t *testing.T) {
 		appWithInstance := getAppWithInstance(t, db)
 
 		// fetch version breakdown from DB
-		breakdownDB, err := db.GetGroupVersionBreakdown(appWithInstance.Groups[0].ID)
+		breakdownDB, err := queries(db).GetGroupVersionBreakdown(appWithInstance.Groups[0].ID)
 		require.NoError(t, err)
 		require.NotNil(t, breakdownDB)
 
@@ -121,20 +121,20 @@ func TestGroupStatusTimeline(t *testing.T) {
 
 		// create instance for app[0]
 		instanceID := uuid.New()
-		instanceDB, err := db.RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
+		instanceDB, err := newRuntimeForTest(t, db).RegisterInstance(instanceID.String(), "alias", "0.0.0.0", "0.0.1", app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// GetUpdatePackage
-		_, err = db.GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
+		_, err = newRuntimeForTest(t, db).GetUpdatePackage(instanceDB.ID, instanceDB.Alias, instanceDB.IP, instanceDB.Application.Version, app.ID, app.Groups[0].ID)
 		require.NoError(t, err)
 
 		// create event for instance
-		err = db.RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
+		err = newRuntimeForTest(t, db).RegisterEvent(instanceDB.ID, app.ID, app.Groups[0].ID, api.EventUpdateComplete, api.ResultSuccessReboot, "0.0.0", "0")
 		require.NoError(t, err)
 
 		// get group status timeline from DB
 
-		groupStatusCountTimelineDB, err := db.GetGroupStatusCountTimeline(app.Groups[0].ID, "1d")
+		groupStatusCountTimelineDB, err := queries(db).GetGroupStatusCountTimeline(app.Groups[0].ID, "1d")
 		require.NoError(t, err)
 		require.NotNil(t, groupStatusCountTimelineDB)
 
@@ -194,7 +194,7 @@ func TestGroupInstanceStats(t *testing.T) {
 		appWithInstance := getAppWithInstance(t, db)
 
 		// get instance stats from DB
-		instanceStatsDB, err := db.GetGroupInstancesStats(appWithInstance.Groups[0].ID, "1d")
+		instanceStatsDB, err := queries(db).GetGroupInstancesStats(appWithInstance.Groups[0].ID, "1d")
 		require.NoError(t, err)
 		require.NotNil(t, instanceStatsDB)
 

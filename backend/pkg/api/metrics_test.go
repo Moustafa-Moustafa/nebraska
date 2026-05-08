@@ -1,9 +1,11 @@
-package api
+package api_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/flatcar/nebraska/backend/pkg/api"
 )
 
 func TestGetAppInstancesPerChannelMetrics(t *testing.T) {
@@ -11,9 +13,9 @@ func TestGetAppInstancesPerChannelMetrics(t *testing.T) {
 	defer a.Close()
 
 	// defaultTeamID constant is defined in users_test.go
-	metrics, err := a.GetAppInstancesPerChannelMetrics()
+	metrics, err := runtimeSvc(a).GetAppInstancesPerChannelMetrics()
 	require.NoError(t, err)
-	expectedMetrics := []AppInstancesPerChannelMetric{
+	expectedMetrics := []api.AppInstancesPerChannelMetric{
 		{
 			ApplicationName: "Sample application",
 			Version:         "1.0.1",
@@ -72,9 +74,9 @@ func TestGetFailedUpdatesMetrics(t *testing.T) {
 	defer a.Close()
 
 	// defaultTeamID constant is defined in users_test.go
-	metrics, err := a.GetFailedUpdatesMetrics()
+	metrics, err := runtimeSvc(a).GetFailedUpdatesMetrics()
 	require.NoError(t, err)
-	expectedMetrics := []FailedUpdatesMetric{
+	expectedMetrics := []api.FailedUpdatesMetric{
 		{
 			ApplicationName: "Sample application",
 			FailureCount:    1,

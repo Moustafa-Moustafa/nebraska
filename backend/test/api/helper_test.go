@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flatcar/nebraska/backend/pkg/api"
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
+	apiruntime "github.com/flatcar/nebraska/backend/pkg/api/runtime"
 )
 
 // newDBForTest is a helper function that
@@ -26,11 +28,20 @@ func newDBForTest(t *testing.T) *api.API {
 	return db
 }
 
+func newRuntimeForTest(t *testing.T, db *api.API) *apiruntime.Service {
+	t.Helper()
+	return apiruntime.NewService(db.DB(), true)
+}
+
+func queries(db *api.API) *dbreads.Queries {
+	return dbreads.New(db.DB())
+}
+
 // getTeamID is a helper function that
 // takes the db connection and returns the default teamID.
 func getTeamID(t *testing.T, db *api.API) string {
 	t.Helper()
-	team, err := db.GetTeam()
+	team, err := queries(db).GetTeam()
 	require.NoError(t, err)
 	require.NotNil(t, team)
 	return team.ID
@@ -42,7 +53,7 @@ func getApps(t *testing.T, db *api.API) []*api.Application {
 	t.Helper()
 
 	teamID := getTeamID(t, db)
-	apps, err := db.GetApps(teamID, 1, 10)
+	apps, err := queries(db).GetApps(teamID, 1, 10)
 	require.NoError(t, err)
 	require.NotNil(t, apps)
 	return apps

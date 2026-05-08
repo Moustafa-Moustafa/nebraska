@@ -1,3 +1,7 @@
+drop table if exists admin_activity cascade;
+drop table if exists group_state cascade;
+drop table if exists instance_stats cascade;
+drop table if exists package_file cascade;
 drop table if exists team cascade;
 drop table if exists users cascade;
 drop table if exists application cascade;

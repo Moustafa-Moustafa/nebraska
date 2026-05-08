@@ -11,6 +11,8 @@ import (
 	"gopkg.in/guregu/null.v4"
 
 	"github.com/flatcar/nebraska/backend/pkg/api"
+	"github.com/flatcar/nebraska/backend/pkg/api/admin"
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 )
 
 const (
@@ -32,13 +34,23 @@ func newForTest(t *testing.T, conf *Config) *Syncer {
 	t.Helper()
 	a := newAPI(t)
 
-	if conf.API == nil {
-		conf.API = a
+	if conf.Queries == nil {
+		conf.Queries = dbreads.New(a.DB())
+	}
+	if conf.Admin == nil {
+		conf.Admin = admin.NewService(a.DB())
+	}
+	if conf.Closer == nil {
+		conf.Closer = a
 	}
 	s, err := New(conf)
 	require.NoError(t, err)
 
 	return s
+}
+
+func queries(a *api.API) *dbreads.Queries {
+	return dbreads.New(a.DB())
 }
 
 func TestMain(m *testing.M) {
@@ -93,7 +105,9 @@ func TestSyncer_InvalidPkgsURL(t *testing.T) {
 			t.Parallel()
 
 			_, err := New(&Config{
-				API:         a,
+				Queries:     dbreads.New(a.DB()),
+				Admin:       admin.NewService(a.DB()),
+				Closer:      a,
 				PackagesURL: testCase.url,
 			})
 			if testCase.isErr {
@@ -107,14 +121,14 @@ func TestSyncer_InvalidPkgsURL(t *testing.T) {
 
 func TestSyncer_Init(t *testing.T) {
 	syncer := newForTest(t, &Config{})
-	a := syncer.api
+	a := syncer.queries
 	t.Cleanup(func() {
-		syncer.api.Close()
+		syncer.closer.Close()
 	})
 
 	tApp, err := a.GetApp(flatcarAppID)
 	require.NoError(t, err)
-	tPkg, err := a.AddPackage(&api.Package{Type: api.PkgTypeFlatcar, URL: "http://sample.url/pkg", Version: "12.1.0", ApplicationID: tApp.ID, Arch: api.ArchAMD64})
+	tPkg, err := syncer.admin.AddPackage(&api.Package{Type: api.PkgTypeFlatcar, URL: "http://sample.url/pkg", Version: "12.1.0", ApplicationID: tApp.ID, Arch: api.ArchAMD64})
 	require.NoError(t, err)
 	groupID, err := a.GetGroupID(flatcarAppID, "stable", tPkg.Arch)
 	require.NoError(t, err)
@@ -126,7 +140,7 @@ func TestSyncer_Init(t *testing.T) {
 
 	tChannel.PackageID = null.StringFrom(tPkg.ID)
 
-	err = a.UpdateChannel(tChannel)
+	err = syncer.admin.UpdateChannel(tChannel)
 	require.NoError(t, err)
 
 	err = syncer.initialize()
@@ -172,14 +186,15 @@ func createOmahaUpdate() *omaha.UpdateResponse {
 
 func setupFlatcarAppStableGroup(t *testing.T, a *api.API) *api.Group {
 	t.Helper()
-	tApp, err := a.GetApp(flatcarAppID)
+	q := dbreads.New(a.DB())
+	tApp, err := q.GetApp(flatcarAppID)
 	require.NoError(t, err)
-	tPkg, err := a.AddPackage(&api.Package{Type: api.PkgTypeFlatcar, URL: "http://sample.url/pkg", Version: "0.1.0", ApplicationID: tApp.ID, Arch: api.ArchAMD64})
+	tPkg, err := admin.NewService(a.DB()).AddPackage(&api.Package{Type: api.PkgTypeFlatcar, URL: "http://sample.url/pkg", Version: "0.1.0", ApplicationID: tApp.ID, Arch: api.ArchAMD64})
 	require.NoError(t, err)
-	groupID, err := a.GetGroupID(flatcarAppID, "stable", tPkg.Arch)
+	groupID, err := q.GetGroupID(flatcarAppID, "stable", tPkg.Arch)
 	require.NoError(t, err)
 
-	tGroup, err := a.GetGroup(groupID)
+	tGroup, err := q.GetGroup(groupID)
 	require.NoError(t, err)
 
 	tChannel := tGroup.Channel
@@ -191,12 +206,12 @@ func setupFlatcarAppStableGroup(t *testing.T, a *api.API) *api.Group {
 
 func TestSyncer_GetPackage(t *testing.T) {
 	syncer := newForTest(t, &Config{})
-	a := syncer.api
+	apiDB := newAPI(t)
 	t.Cleanup(func() {
-		a.Close()
+		syncer.closer.Close()
 	})
 
-	tGroup := setupFlatcarAppStableGroup(t, a)
+	tGroup := setupFlatcarAppStableGroup(t, apiDB)
 	tChannel := tGroup.Channel
 
 	err := syncer.initialize()
@@ -212,7 +227,7 @@ func TestSyncer_GetPackage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get updated group
-	tGroup, err = a.GetGroup(tGroup.ID)
+	tGroup, err = queries(apiDB).GetGroup(tGroup.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, update.Manifest.Version, tGroup.Channel.Package.Version)
@@ -222,12 +237,12 @@ func TestSyncer_GetPackage(t *testing.T) {
 
 func TestSyncer_GetMultiFilePackage(t *testing.T) {
 	syncer := newForTest(t, &Config{})
-	a := syncer.api
+	apiDB := newAPI(t)
 	t.Cleanup(func() {
-		a.Close()
+		syncer.closer.Close()
 	})
 
-	tGroup := setupFlatcarAppStableGroup(t, a)
+	tGroup := setupFlatcarAppStableGroup(t, apiDB)
 	tChannel := tGroup.Channel
 
 	err := syncer.initialize()
@@ -243,7 +258,7 @@ func TestSyncer_GetMultiFilePackage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get updated group
-	tGroup, err = a.GetGroup(tGroup.ID)
+	tGroup, err = queries(apiDB).GetGroup(tGroup.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, update.Manifest.Version, tGroup.Channel.Package.Version)
@@ -259,12 +274,12 @@ func TestSyncer_GetPackageWithDiffURL(t *testing.T) {
 		PackagesURL: "https://my.super.different.packagesurl.io/bucket/",
 	}
 	syncer := newForTest(t, conf)
-	a := syncer.api
+	apiDB := newAPI(t)
 	t.Cleanup(func() {
-		a.Close()
+		syncer.closer.Close()
 	})
 
-	tGroup := setupFlatcarAppStableGroup(t, a)
+	tGroup := setupFlatcarAppStableGroup(t, apiDB)
 	tChannel := tGroup.Channel
 
 	err := syncer.initialize()
@@ -280,7 +295,7 @@ func TestSyncer_GetPackageWithDiffURL(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get updated group
-	tGroup, err = a.GetGroup(tGroup.ID)
+	tGroup, err = queries(apiDB).GetGroup(tGroup.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, update.Manifest.Version, tGroup.Channel.Package.Version)
@@ -294,12 +309,12 @@ func TestSyncer_GetPackageWithGeneratedURL(t *testing.T) {
 		PackagesURL: baseURL + "{{ARCH}}/{{VERSION}}",
 	}
 	syncer := newForTest(t, conf)
-	a := syncer.api
+	apiDB := newAPI(t)
 	t.Cleanup(func() {
-		a.Close()
+		syncer.closer.Close()
 	})
 
-	tGroup := setupFlatcarAppStableGroup(t, a)
+	tGroup := setupFlatcarAppStableGroup(t, apiDB)
 	tChannel := tGroup.Channel
 
 	err := syncer.initialize()
@@ -315,7 +330,7 @@ func TestSyncer_GetPackageWithGeneratedURL(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get updated group
-	tGroup, err = a.GetGroup(tGroup.ID)
+	tGroup, err = queries(apiDB).GetGroup(tGroup.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, update.Manifest.Version, tGroup.Channel.Package.Version)

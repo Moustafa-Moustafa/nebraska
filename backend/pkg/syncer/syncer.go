@@ -24,6 +24,8 @@ import (
 	"gopkg.in/guregu/null.v4"
 
 	"github.com/flatcar/nebraska/backend/pkg/api"
+	"github.com/flatcar/nebraska/backend/pkg/api/admin"
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/config"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
 )
@@ -51,7 +53,9 @@ type channelDescriptor struct {
 // to them). When hostPackages is enabled, packages payloads will be downloaded
 // into packagesPath and package url/filename will be rewritten.
 type Syncer struct {
-	api               *api.API
+	queries           *dbreads.Queries
+	admin             *admin.Service
+	closer            io.Closer
 	hostPackages      bool
 	packagesPath      string
 	packagesURL       string
@@ -68,7 +72,9 @@ type Syncer struct {
 
 // Config represents the configuration used to create a new Syncer instance.
 type Config struct {
-	API               *api.API
+	Queries           *dbreads.Queries
+	Admin             *admin.Service
+	Closer            io.Closer
 	HostPackages      bool
 	PackagesPath      string
 	PackagesURL       string
@@ -77,7 +83,7 @@ type Config struct {
 }
 
 // Setup creates a new syncer from config and db connection, and returns it.
-func Setup(conf *config.Config, db *api.API) (*Syncer, error) {
+func Setup(conf *config.Config, queries *dbreads.Queries, adminSvc *admin.Service, closer io.Closer) (*Syncer, error) {
 	checkFrequency, err := time.ParseDuration(conf.CheckFrequencyVal)
 	if err != nil {
 		return nil, fmt.Errorf("invalid Check Frequency value: %w", err)
@@ -88,7 +94,9 @@ func Setup(conf *config.Config, db *api.API) (*Syncer, error) {
 	}
 
 	syncer, err := New(&Config{
-		API:               db,
+		Queries:           queries,
+		Admin:             adminSvc,
+		Closer:            closer,
 		HostPackages:      conf.HostFlatcarPackages,
 		PackagesPath:      conf.FlatcarPackagesPath,
 		PackagesURL:       conf.SyncerPkgsURL,
@@ -103,7 +111,7 @@ func Setup(conf *config.Config, db *api.API) (*Syncer, error) {
 
 // New creates a new Syncer instance.
 func New(conf *Config) (*Syncer, error) {
-	if conf.API == nil {
+	if conf.Admin == nil {
 		return nil, ErrInvalidAPIInstance
 	}
 
@@ -114,7 +122,9 @@ func New(conf *Config) (*Syncer, error) {
 	}
 
 	s := &Syncer{
-		api:               conf.API,
+		queries:           conf.Queries,
+		admin:             conf.Admin,
+		closer:            conf.Closer,
 		hostPackages:      conf.HostPackages,
 		packagesPath:      conf.PackagesPath,
 		packagesURL:       conf.PackagesURL,
@@ -153,7 +163,7 @@ L:
 		}
 	}
 
-	s.api.Close()
+	s.closer.Close()
 }
 
 // Stop stops the polling for updates.
@@ -167,7 +177,7 @@ func (s *Syncer) Stop() {
 // Nebraska the last versions we know about for the different channels in the
 // Flatcar application and keeping track of some ids.
 func (s *Syncer) initialize() error {
-	flatcarApp, err := s.api.GetApp(flatcarAppID)
+	flatcarApp, err := s.queries.GetApp(flatcarAppID)
 	if err != nil {
 		return err
 	}
@@ -281,7 +291,7 @@ func (s *Syncer) processUpdate(descriptor channelDescriptor, update *omaha.Updat
 	// Create new package and action for Flatcar application in Nebraska if
 	// needed (package may already exist and we just need to update the channel
 	// reference to it)
-	pkg, err := s.api.GetPackageByVersionAndArch(flatcarAppID, update.Manifest.Version, descriptor.arch)
+	pkg, err := s.queries.GetPackageByVersionAndArch(flatcarAppID, update.Manifest.Version, descriptor.arch)
 	if err != nil {
 		url := update.URLs[0].CodeBase
 		filename := update.Manifest.Packages[0].Name
@@ -345,7 +355,7 @@ func (s *Syncer) processUpdate(descriptor channelDescriptor, update *omaha.Updat
 			Arch:          descriptor.arch,
 			ExtraFiles:    extraFiles,
 		}
-		if _, err = s.api.AddPackage(pkg); err != nil {
+		if _, err = s.admin.AddPackage(pkg); err != nil {
 			l.Error().Err(err).Str("channel", descriptor.name).Str("arch", descriptor.arch.String()).Msg("processUpdate, adding package")
 			return err
 		}
@@ -362,20 +372,20 @@ func (s *Syncer) processUpdate(descriptor channelDescriptor, update *omaha.Updat
 			Deadline:              update.Manifest.Actions[0].Deadline,
 			PackageID:             pkg.ID,
 		}
-		if _, err = s.api.AddFlatcarAction(flatcarAction); err != nil {
+		if _, err = s.admin.AddFlatcarAction(flatcarAction); err != nil {
 			l.Error().Err(err).Str("channel", descriptor.name).Str("arch", descriptor.arch.String()).Msgf("processUpdate, adding flatcar action")
 			return err
 		}
 	}
 
 	// Update channel to point to the package with the new version
-	channel, err := s.api.GetChannel(s.channelsIDs[descriptor])
+	channel, err := s.queries.GetChannel(s.channelsIDs[descriptor])
 	if err != nil {
 		l.Error().Err(err).Str("channel", descriptor.name).Str("arch", descriptor.arch.String()).Msg("processUpdate, getting channel to update")
 		return err
 	}
 	channel.PackageID = null.StringFrom(pkg.ID)
-	if err = s.api.UpdateChannel(channel); err != nil {
+	if err = s.admin.UpdateChannel(channel); err != nil {
 		l.Error().Err(err).Str("channel", descriptor.name).Str("arch", descriptor.arch.String()).Msg("processUpdate, updating")
 		return err
 	}

@@ -23,7 +23,7 @@ func TestListApp(t *testing.T) {
 		teamID := getTeamID(t, db)
 
 		// get apps from DB
-		appsDB, err := db.GetApps(teamID, 1, 10)
+		appsDB, err := queries(db).GetApps(teamID, 1, 10)
 		require.NoError(t, err)
 		require.NotNil(t, appsDB)
 
@@ -64,7 +64,7 @@ func TestCreateApp(t *testing.T) {
 		assert.Equal(t, appName, application.Name)
 
 		// check if app exists in DB
-		app, err := db.GetApp(application.ID)
+		app, err := queries(db).GetApp(application.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, application.ID, app.ID)
@@ -96,7 +96,7 @@ func TestCreateApp(t *testing.T) {
 		require.NotNil(t, db)
 
 		// check if app exists in DB
-		app, err = db.GetApp(application.ID)
+		app, err = queries(db).GetApp(application.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, application.ID, app.ID)
@@ -128,7 +128,7 @@ func TestCreateApp(t *testing.T) {
 		require.NotNil(t, db)
 
 		// check if app exists in DB
-		app, err = db.GetApp(application.ID)
+		app, err = queries(db).GetApp(application.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, application.ID, app.ID)
@@ -203,7 +203,7 @@ func TestUpdateApp(t *testing.T) {
 
 		// check name in DB
 
-		app, err := db.GetApp(app.ID)
+		app, err := queries(db).GetApp(app.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, name, app.Name)
@@ -233,7 +233,7 @@ func TestUpdateApp(t *testing.T) {
 
 		// check name in DB
 
-		app, err := db.GetApp(app.ID)
+		app, err := queries(db).GetApp(app.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, name, app.Name)
@@ -256,7 +256,7 @@ func TestDeleteApp(t *testing.T) {
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
 		// check if app exists in db
-		app, err := db.GetApp(app.ID)
+		app, err := queries(db).GetApp(app.ID)
 		assert.Error(t, err)
 		assert.Nil(t, app)
 	})
@@ -276,7 +276,7 @@ func TestDeleteApp(t *testing.T) {
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
 		// check if app exists in db
-		app, err := db.GetApp(app.ID)
+		app, err := queries(db).GetApp(app.ID)
 		assert.Error(t, err)
 		assert.Nil(t, app)
 	})

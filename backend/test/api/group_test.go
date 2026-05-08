@@ -27,7 +27,7 @@ func TestListGroups(t *testing.T) {
 		app := getRandomApp(t, db)
 
 		// get groups from DB for app
-		groupsDB, err := db.GetGroups(app.ID, 1, 10)
+		groupsDB, err := queries(db).GetGroups(app.ID, 1, 10)
 		require.NoError(t, err)
 		require.NotNil(t, groupsDB)
 
@@ -56,7 +56,7 @@ func TestListGroups(t *testing.T) {
 		app := getAppWithProductID(t, db)
 
 		// get groups from DB for app
-		groupsDB, err := db.GetGroups(app.ID, 1, 10)
+		groupsDB, err := queries(db).GetGroups(app.ID, 1, 10)
 		require.NoError(t, err)
 		require.NotNil(t, groupsDB)
 
@@ -102,7 +102,7 @@ func TestCreateGroup(t *testing.T) {
 		assert.Equal(t, groupName, group.Name)
 
 		// check group exists in DB
-		groupDB, err := db.GetGroup(group.ID)
+		groupDB, err := queries(db).GetGroup(group.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, groupDB)
 	})
@@ -129,7 +129,7 @@ func TestCreateGroup(t *testing.T) {
 		assert.Equal(t, groupName, group.Name)
 
 		// check group exists in DB
-		groupDB, err := db.GetGroup(group.ID)
+		groupDB, err := queries(db).GetGroup(group.ID)
 		assert.NoError(t, err)
 		assert.NotNil(t, groupDB)
 	})
@@ -207,7 +207,7 @@ func TestUpdateGroup(t *testing.T) {
 		assert.Equal(t, groupName, group.Name)
 
 		// check name in db
-		updatedGroupDB, err := db.GetGroup(groupDB.ID)
+		updatedGroupDB, err := queries(db).GetGroup(groupDB.ID)
 		require.NoError(t, err)
 		assert.Equal(t, groupName, updatedGroupDB.Name)
 	})
@@ -241,7 +241,7 @@ func TestUpdateGroup(t *testing.T) {
 		assert.Equal(t, groupName, group.Name)
 
 		// check name in db
-		updatedGroupDB, err := db.GetGroup(groupDB.ID)
+		updatedGroupDB, err := queries(db).GetGroup(groupDB.ID)
 		require.NoError(t, err)
 		assert.Equal(t, groupName, updatedGroupDB.Name)
 	})
@@ -263,7 +263,7 @@ func TestDeleteGroup(t *testing.T) {
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
 		// check if app doesn't exists in DB
-		group, err := db.GetGroup(groupDB.ID)
+		group, err := queries(db).GetGroup(groupDB.ID)
 		assert.Error(t, err)
 		assert.Nil(t, group)
 	})
@@ -282,7 +282,7 @@ func TestDeleteGroup(t *testing.T) {
 		httpDo(t, url, method, nil, http.StatusNoContent, "", nil)
 
 		// check if app doesn't exists in DB
-		group, err := db.GetGroup(groupDB.ID)
+		group, err := queries(db).GetGroup(groupDB.ID)
 		assert.Error(t, err)
 		assert.Nil(t, group)
 	})

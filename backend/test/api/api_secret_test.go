@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flatcar/nebraska/backend/pkg/api/admin"
 	"github.com/flatcar/nebraska/backend/pkg/config"
 	"github.com/flatcar/nebraska/backend/pkg/server"
 )
@@ -43,7 +44,8 @@ func TestAPIEndpointSecret(t *testing.T) {
 	// increase max update for the group
 	group := app.Groups[0]
 	group.PolicyMaxUpdatesPerPeriod = 1000
-	err := db.UpdateGroup(group)
+	adminSvc := admin.NewService(db.DB())
+	err := adminSvc.UpdateGroup(group)
 	require.NoError(t, err)
 
 	tt := []struct {
