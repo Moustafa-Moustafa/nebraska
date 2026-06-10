@@ -84,22 +84,24 @@ type GroupDescriptor struct {
 
 // Group represents a Nebraska application's group.
 type Group struct {
-	ID                        string      `db:"id" json:"id"`
-	Name                      string      `db:"name" json:"name"`
-	Description               string      `db:"description" json:"description"`
-	CreatedTs                 time.Time   `db:"created_ts" json:"created_ts"`
-	RolloutInProgress         bool        `db:"rollout_in_progress" json:"rollout_in_progress"`
-	ApplicationID             string      `db:"application_id" json:"application_id"`
-	ChannelID                 null.String `db:"channel_id" json:"channel_id"`
-	PolicyUpdatesEnabled      bool        `db:"policy_updates_enabled" json:"policy_updates_enabled"`
-	PolicySafeMode            bool        `db:"policy_safe_mode" json:"policy_safe_mode"`
-	PolicyOfficeHours         bool        `db:"policy_office_hours" json:"policy_office_hours"`
-	PolicyTimezone            null.String `db:"policy_timezone" json:"policy_timezone"`
-	PolicyPeriodInterval      string      `db:"policy_period_interval" json:"policy_period_interval"`
-	PolicyMaxUpdatesPerPeriod int         `db:"policy_max_updates_per_period" json:"policy_max_updates_per_period"`
-	PolicyUpdateTimeout       string      `db:"policy_update_timeout" json:"policy_update_timeout"`
-	Channel                   *Channel    `db:"channel" json:"channel,omitempty"`
-	Track                     string      `db:"track" json:"track"`
+	ID                          string      `db:"id" json:"id"`
+	Name                        string      `db:"name" json:"name"`
+	Description                 string      `db:"description" json:"description"`
+	CreatedTs                   time.Time   `db:"created_ts" json:"created_ts"`
+	RolloutInProgress           bool        `db:"rollout_in_progress" json:"rollout_in_progress"`
+	UpdatesDisabledDueToFailure bool        `db:"updates_disabled_due_to_failure" json:"updates_disabled_due_to_failure"`
+	ForceUpdatesEnabledTs       null.Time   `db:"force_updates_enabled_ts" json:"force_updates_enabled_ts"`
+	ApplicationID               string      `db:"application_id" json:"application_id"`
+	ChannelID                   null.String `db:"channel_id" json:"channel_id"`
+	PolicyUpdatesEnabled        bool        `db:"policy_updates_enabled" json:"policy_updates_enabled"`
+	PolicySafeMode              bool        `db:"policy_safe_mode" json:"policy_safe_mode"`
+	PolicyOfficeHours           bool        `db:"policy_office_hours" json:"policy_office_hours"`
+	PolicyTimezone              null.String `db:"policy_timezone" json:"policy_timezone"`
+	PolicyPeriodInterval        string      `db:"policy_period_interval" json:"policy_period_interval"`
+	PolicyMaxUpdatesPerPeriod   int         `db:"policy_max_updates_per_period" json:"policy_max_updates_per_period"`
+	PolicyUpdateTimeout         string      `db:"policy_update_timeout" json:"policy_update_timeout"`
+	Channel                     *Channel    `db:"channel" json:"channel,omitempty"`
+	Track                       string      `db:"track" json:"track"`
 }
 
 // VersionBreakdownEntry represents the distribution of the versions currently
@@ -197,8 +199,13 @@ func (api *API) AddGroup(group *Group) (*Group, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Re-read to populate the group_state fields.
+	fullGroup, err := api.GetGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
 	api.updateCachedGroups()
-	return group, nil
+	return fullGroup, nil
 }
 
 // UpdateGroup updates an existing group using the context of the group
@@ -284,8 +291,8 @@ func (api *API) DeleteGroup(groupID string) error {
 func (api *API) GetGroup(groupID string) (*Group, error) {
 	var group Group
 
-	query, _, err := goqu.From("groups").
-		Where(goqu.C("id").Eq(groupID)).
+	query, _, err := api.groupsQuery().
+		Where(goqu.I("groups.id").Eq(groupID)).
 		ToSQL()
 	if err != nil {
 		return nil, err
@@ -487,13 +494,14 @@ func (api *API) getGroupUpdatesStats(group *Group) (*UpdatesStats, error) {
 	return &updatesStats, nil
 }
 
-// disableUpdates updates the group provided setting the policy_updates_enabled
-// field to false. This usually happens when the first instance in a group
-// processing an update to a specific version fails if safe mode is enabled.
+// disableUpdates updates the group provided setting the
+// updates_disabled_due_to_failure field on its group_state row to true. This
+// usually happens when the first instance in a group processing an update to
+// a specific version fails if safe mode is enabled.
 func (api *API) disableUpdates(groupID string) error {
-	query, _, err := goqu.Update("groups").
-		Set(goqu.Record{"policy_updates_enabled": false}).
-		Where(goqu.C("id").Eq(groupID)).
+	query, _, err := goqu.Update("group_state").
+		Set(goqu.Record{"updates_disabled_due_to_failure": true}).
+		Where(goqu.C("group_id").Eq(groupID)).
 		ToSQL()
 	if err != nil {
 		return err
@@ -501,14 +509,39 @@ func (api *API) disableUpdates(groupID string) error {
 	_, err = api.db.Exec(query)
 
 	return err
+}
+
+// ForceEnableUpdates advances the force_updates_enabled_ts timestamp on the
+// group provided, which triggers clearing its updates_disabled_due_to_failure flag.
+func (api *API) ForceEnableUpdates(groupID string) error {
+	query, _, err := goqu.Update("groups").
+		Set(goqu.Record{"force_updates_enabled_ts": goqu.L("now() at time zone 'utc'")}).
+		Where(goqu.C("id").Eq(groupID)).
+		ToSQL()
+	if err != nil {
+		return err
+	}
+	result, err := api.db.Exec(query)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrNoRowsAffected
+	}
+	return nil
 }
 
 // setGroupRolloutInProgress updates the value of the rollout_in_progress flag
 // for a given group, indicating if a rollout is taking place now or not.
 func (api *API) setGroupRolloutInProgress(groupID string, inProgress bool) error {
-	query, _, err := goqu.Update("groups").
+	query, _, err := goqu.Update("group_state").
 		Set(goqu.Record{"rollout_in_progress": inProgress}).
-		Where(goqu.C("id").Eq(groupID)).
+		Where(goqu.C("group_id").Eq(groupID)).
 		ToSQL()
 	if err != nil {
 		return err
@@ -518,12 +551,18 @@ func (api *API) setGroupRolloutInProgress(groupID string, inProgress bool) error
 	return err
 }
 
-// groupsQuery returns a SelectDataset prepared to return all groups. This
+// groupsQuery returns a SelectDataset prepared to return all groups joined
+// with their group_state row so the runtime-mutable flags are populated. This
 // query is meant to be extended later in the methods using it to filter by a
 // specific group id, all groups of a given app, specify how to query the rows
 // or their destination.
 func (api *API) groupsQuery() *goqu.SelectDataset {
-	query := goqu.From("groups").Order(goqu.I("created_ts").Desc())
+	query := goqu.From("groups").
+		LeftJoin(goqu.T("group_state"), goqu.On(goqu.I("groups.id").Eq(goqu.I("group_state.group_id")))).
+		Select(goqu.T("groups").All(),
+			goqu.I("group_state.rollout_in_progress"),
+			goqu.I("group_state.updates_disabled_due_to_failure")).
+		Order(goqu.I("groups.created_ts").Desc())
 
 	return query
 }

@@ -1,7 +1,7 @@
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-import { Box, Divider, Typography } from '@mui/material';
+import { Box, Button, Divider, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { TFunction } from 'i18next';
 import React from 'react';
@@ -192,6 +192,38 @@ export function PureGroupItem({
                 </CardLabel>
               </Box>
             </Grid>
+            {group.updates_disabled_due_to_failure && (
+              <Grid>
+                <CardFeatureLabel>{t('groups|auto_disabled_due_to_failure')}</CardFeatureLabel>
+                <Box p={1} mb={1}>
+                  <CardLabel>
+                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                      <Box>{t('frequent|yes')}</Box>
+                      <CloseIcon color="error" fontSize="small" />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() =>
+                          applicationsStore().forceEnableGroupUpdates(
+                            group.application_id,
+                            group.id
+                          )
+                        }
+                      >
+                        {t('groups|force_enable_updates')}
+                      </Button>
+                      {group.force_updates_enabled_ts && (
+                        <Box sx={{ color: 'text.disabled', fontSize: '0.75rem' }}>
+                          {t('groups|last_force_enabled', {
+                            ts: new Date(group.force_updates_enabled_ts).toLocaleString(),
+                          })}
+                        </Box>
+                      )}
+                    </Box>
+                  </CardLabel>
+                </Box>
+              </Grid>
+            )}
             <Grid>
               <CardFeatureLabel>{t('groups|rollout_policy')}</CardFeatureLabel>
               <Box p={1} mb={1}>

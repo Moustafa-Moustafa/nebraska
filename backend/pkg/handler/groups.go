@@ -156,6 +156,40 @@ func (h *Handler) DeleteGroup(ctx echo.Context, _ string, groupID string) error 
 	return ctx.NoContent(http.StatusNoContent)
 }
 
+func (h *Handler) ForceEnableGroupUpdates(ctx echo.Context, appIDorProductID string, groupID string) error {
+	l := loggerWithUsername(l, ctx)
+
+	_, err := h.db.GetAppID(appIDorProductID)
+	if err != nil {
+		return appNotFoundResponse(ctx, appIDorProductID)
+	}
+
+	oldGroup, err := h.db.GetGroup(groupID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return ctx.NoContent(http.StatusNotFound)
+		}
+		l.Error().Err(err).Str("groupID", groupID).Msg("forceEnableGroupUpdates - getting old group to force-enable updates on")
+		return ctx.NoContent(http.StatusInternalServerError)
+	}
+
+	err = h.db.ForceEnableUpdates(groupID)
+	if err != nil {
+		l.Error().Err(err).Str("groupID", groupID).Msg("forceEnableGroupUpdates - force enabling updates")
+		return ctx.NoContent(http.StatusInternalServerError)
+	}
+
+	group, err := h.db.GetGroup(groupID)
+	if err != nil {
+		l.Error().Err(err).Str("groupID", groupID).Msg("getGroup - getting group")
+		return ctx.NoContent(http.StatusInternalServerError)
+	}
+
+	l.Info().Msgf("forceEnableGroupUpdates - successfully force-enabled updates on group %+v -> %+v", oldGroup, group)
+
+	return ctx.JSON(http.StatusOK, group)
+}
+
 func (h *Handler) GetGroupVersionTimeline(ctx echo.Context, _ string, groupID string, params codegen.GetGroupVersionTimelineParams) error {
 	versionCountTimeline, isCache, err := h.db.GetGroupVersionCountTimeline(groupID, params.Duration)
 	if err != nil {

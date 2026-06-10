@@ -85,7 +85,7 @@ func TestRegisterEvent_TriggerEventConsequences(t *testing.T) {
 	instance, _ = a.GetInstance(tInstance2.ID, tApp.ID)
 	assert.Equal(t, null.IntFrom(int64(InstanceStatusError)), instance.Application.Status)
 	group, _ := a.GetGroup(tGroup.ID)
-	assert.Equal(t, true, group.PolicyUpdatesEnabled, "It wasn't the first update the one that failed.")
+	assert.Equal(t, false, group.UpdatesDisabledDueToFailure, "It wasn't the first update the one that failed.")
 }
 
 func TestRegisterEvent_TriggerEventConsequences_FirstUpdateAttemptFailed(t *testing.T) {
@@ -107,7 +107,7 @@ func TestRegisterEvent_TriggerEventConsequences_FirstUpdateAttemptFailed(t *test
 	instance, _ := a.GetInstance(tInstance.ID, tApp.ID)
 	assert.Equal(t, null.IntFrom(int64(InstanceStatusError)), instance.Application.Status)
 	group, _ := a.GetGroup(tGroup.ID)
-	assert.Equal(t, false, group.PolicyUpdatesEnabled, "First update attempt failed.")
+	assert.Equal(t, true, group.UpdatesDisabledDueToFailure, "First update attempt failed.")
 }
 
 func TestRegisterEvent_CheckSuccessResult(t *testing.T) {

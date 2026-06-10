@@ -2,6 +2,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { Divider } from '@mui/material';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Grid from '@mui/material/Grid';
 import Paper from '@mui/material/Paper';
 import { styled } from '@mui/material/styles';
@@ -218,6 +219,40 @@ function ItemExtended(props: {
                         </CardLabel>
                       </Box>
                     </Grid>
+                    {group.updates_disabled_due_to_failure && (
+                      <Grid>
+                        <CardFeatureLabel>
+                          {t('groups|auto_disabled_due_to_failure')}
+                        </CardFeatureLabel>
+                        <Box my={1}>
+                          <CardLabel>
+                            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                              <Box>{t('frequent|yes')}</Box>
+                              <CloseIcon color="error" fontSize="small" />
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() =>
+                                  applicationsStore().forceEnableGroupUpdates(
+                                    group.application_id,
+                                    group.id
+                                  )
+                                }
+                              >
+                                {t('groups|force_enable_updates')}
+                              </Button>
+                            </Box>
+                            {group.force_updates_enabled_ts && (
+                              <Box sx={{ color: 'text.disabled', fontSize: '0.75rem', mt: 0.5 }}>
+                                {t('groups|last_force_enabled', {
+                                  ts: new Date(group.force_updates_enabled_ts).toLocaleString(),
+                                })}
+                              </Box>
+                            )}
+                          </CardLabel>
+                        </Box>
+                      </Grid>
+                    )}
                     <Grid>
                       <CardFeatureLabel>{t('groups|office_hours_only')}</CardFeatureLabel>
                       <Box my={1}>

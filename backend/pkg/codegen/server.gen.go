@@ -62,6 +62,9 @@ type ServerInterface interface {
 	// (PUT /api/apps/{appIDorProductID}/groups/{groupID})
 	UpdateGroup(ctx echo.Context, appIDorProductID string, groupID string) error
 
+	// (POST /api/apps/{appIDorProductID}/groups/{groupID}/force_enable_updates)
+	ForceEnableGroupUpdates(ctx echo.Context, appIDorProductID string, groupID string) error
+
 	// (GET /api/apps/{appIDorProductID}/groups/{groupID}/instances)
 	GetGroupInstances(ctx echo.Context, appIDorProductID string, groupID string, params GetGroupInstancesParams) error
 
@@ -645,6 +648,36 @@ func (w *ServerInterfaceWrapper) UpdateGroup(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateGroup(ctx, appIDorProductID, groupID)
+	return err
+}
+
+// ForceEnableGroupUpdates converts echo context to params.
+func (w *ServerInterfaceWrapper) ForceEnableGroupUpdates(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "appIDorProductID" -------------
+	var appIDorProductID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appIDorProductID", ctx.Param("appIDorProductID"), &appIDorProductID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter appIDorProductID: %s", err))
+	}
+
+	// ------------- Path parameter "groupID" -------------
+	var groupID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "groupID", ctx.Param("groupID"), &groupID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter groupID: %s", err))
+	}
+
+	ctx.Set(OidcBearerAuthScopes, []string{})
+
+	ctx.Set(OidcCookieAuthScopes, []string{})
+
+	ctx.Set(GithubCookieAuthScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ForceEnableGroupUpdates(ctx, appIDorProductID, groupID)
 	return err
 }
 
@@ -1458,6 +1491,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.DELETE(baseURL+"/api/apps/:appIDorProductID/groups/:groupID", wrapper.DeleteGroup)
 	router.GET(baseURL+"/api/apps/:appIDorProductID/groups/:groupID", wrapper.GetGroup)
 	router.PUT(baseURL+"/api/apps/:appIDorProductID/groups/:groupID", wrapper.UpdateGroup)
+	router.POST(baseURL+"/api/apps/:appIDorProductID/groups/:groupID/force_enable_updates", wrapper.ForceEnableGroupUpdates)
 	router.GET(baseURL+"/api/apps/:appIDorProductID/groups/:groupID/instances", wrapper.GetGroupInstances)
 	router.GET(baseURL+"/api/apps/:appIDorProductID/groups/:groupID/instances/:instanceID", wrapper.GetInstance)
 	router.GET(baseURL+"/api/apps/:appIDorProductID/groups/:groupID/instances/:instanceID/status_history", wrapper.GetInstanceStatusHistory)

@@ -84,6 +84,14 @@ export default class API {
     );
   }
 
+  static forceEnableGroupUpdates(applicationID: string, groupID: string): Promise<Group> {
+    return API.doRequest(
+      'POST',
+      `${BASE_URL}/apps/${applicationID}/groups/${groupID}/force_enable_updates`,
+      ''
+    );
+  }
+
   static getGroupVersionCountTimeline(applicationID: string, groupID: string, duration: string) {
     return API.getJSON(
       `${BASE_URL}/apps/${applicationID}/groups/${groupID}/version_timeline?duration=${duration}`

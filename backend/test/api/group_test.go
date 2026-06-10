@@ -287,3 +287,25 @@ func TestDeleteGroup(t *testing.T) {
 		assert.Nil(t, group)
 	})
 }
+
+func TestForceEnableGroupUpdates(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		// establish DB connection
+		db := newDBForTest(t)
+		defer db.Close()
+
+		// get random app from DB
+		app := getRandomApp(t, db)
+
+		groupDB := app.Groups[0]
+		url := fmt.Sprintf("%s/api/apps/%s/groups/%s/force_enable_updates", os.Getenv("NEBRASKA_TEST_SERVER_URL"), app.ID, groupDB.ID)
+		method := "POST"
+
+		// response
+		var group api.Group
+		httpDo(t, url, method, nil, http.StatusOK, "json", &group)
+
+		assert.Equal(t, groupDB.ID, group.ID)
+		assert.True(t, group.ForceUpdatesEnabledTs.Valid, "response should include force_updates_enabled_ts")
+	})
+}

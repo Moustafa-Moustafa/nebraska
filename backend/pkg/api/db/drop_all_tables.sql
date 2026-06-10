@@ -13,6 +13,12 @@ drop table if exists event_type cascade;
 drop table if exists event cascade;
 drop table if exists activity cascade;
 drop table if exists package_channel_blacklist cascade;
+drop table if exists package_file cascade;
+drop table if exists channel_package_floors cascade;
+drop table if exists instance_stats cascade;
+drop table if exists group_state cascade;
+drop function if exists create_group_state_for_group();
+drop function if exists clear_updates_disabled_on_force_enable();
 drop table if exists database_migrations;
 -- Legacy tables if we're dropping tables in a non-migrated DB
 drop table if exists coreos_action cascade;

@@ -410,6 +410,37 @@ paths:
         "500":
           description: Delete Group error response
 
+  /api/apps/{appIDorProductID}/groups/{groupID}/force_enable_updates:
+    post:
+      description: force-enable updates on a group, clearing any auto-disable due to a failed rollout
+      operationId: forceEnableGroupUpdates
+      security:
+        - oidcBearerAuth: []
+        - oidcCookieAuth: []
+        - githubCookieAuth: []
+      parameters:
+        - in: path
+          name: appIDorProductID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: groupID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Force Enable Group Updates success response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/group"
+        "404":
+          description: Group not found response
+        "500":
+          description: Force Enable Group Updates error response
+
   /api/apps/{appIDorProductID}/groups/{groupID}/version_timeline:
     get:
       description: get version timeline of a group given its groupID and appID
@@ -1719,6 +1750,8 @@ components:
         - description
         - createdTs
         - rolloutInProgress
+        - updatesDisabledDueToFailure
+        - forceUpdatesEnabledTs
         - applicationID
         - channelID
         - policyUpdatesEnabled
@@ -1745,6 +1778,16 @@ components:
           type: boolean
           x-oapi-codegen-extra-tags:
             json: rollout_in_progress
+        updatesDisabledDueToFailure:
+          type: boolean
+          x-oapi-codegen-extra-tags:
+            json: updates_disabled_due_to_failure
+        forceUpdatesEnabledTs:
+          type: string
+          format: date-time
+          nullable: true
+          x-oapi-codegen-extra-tags:
+            json: force_updates_enabled_ts
         applicationID:
           type: string
           x-oapi-codegen-extra-tags:

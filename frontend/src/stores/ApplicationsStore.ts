@@ -211,6 +211,16 @@ class ApplicationsStore extends Store {
     this.emitChange();
   }
 
+  async forceEnableGroupUpdates(applicationID: string, groupID: string) {
+    const group = await API.forceEnableGroupUpdates(applicationID, groupID);
+    const applicationToUpdate = _.findWhere(this.applications as _.Collection<any>, {
+      id: group.application_id,
+    });
+    const index = _.findIndex(applicationToUpdate.groups, { id: group.id });
+    applicationToUpdate.groups[index] = group;
+    this.emitChange();
+  }
+
   getGroup(applicationID: string, groupID: string) {
     API.getGroup(applicationID, groupID).then(group => {
       const applicationToUpdate = _.findWhere(this.applications as _.Collection<any>, {

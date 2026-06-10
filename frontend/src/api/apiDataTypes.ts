@@ -8,6 +8,8 @@ export interface Group {
   description: string;
   created_ts: string;
   rollout_in_progress: boolean;
+  updates_disabled_due_to_failure: boolean;
+  force_updates_enabled_ts: string | null;
   application_id: string;
   channel_id: null | string;
   policy_updates_enabled: boolean;

@@ -59,6 +59,8 @@ export const Application = {
         description: '',
         created_ts: '',
         rollout_in_progress: false,
+        updates_disabled_due_to_failure: false,
+        force_updates_enabled_ts: null,
         application_id: '',
         channel_id: null,
         policy_updates_enabled: false,

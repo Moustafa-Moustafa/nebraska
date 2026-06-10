@@ -154,22 +154,24 @@ type FlatcarActionPackage struct {
 
 // Group defines model for group.
 type Group struct {
-	ApplicationID             string    `json:"application_id"`
-	Channel                   *Channel  `db:"channel" json:"channel,omitempty"`
-	ChannelID                 string    `json:"channel_id"`
-	CreatedTs                 time.Time `json:"created_ts"`
-	Description               string    `json:"description"`
-	Id                        string    `json:"id"`
-	Name                      string    `json:"name"`
-	PolicyMaxUpdatesPerPeriod int       `json:"policy_max_updates_per_period"`
-	PolicyOfficeHours         bool      `json:"policy_office_hours"`
-	PolicyPeriodInterval      string    `json:"policy_period_interval"`
-	PolicySafeMode            bool      `json:"policy_safe_mode"`
-	PolicyTimezone            string    `json:"policy_timezone"`
-	PolicyUpdateTimeout       string    `json:"policy_update_timeout"`
-	PolicyUpdatesEnabled      bool      `json:"policy_updates_enabled"`
-	RolloutInProgress         bool      `json:"rollout_in_progress"`
-	Track                     string    `json:"track"`
+	ApplicationID               string     `json:"application_id"`
+	Channel                     *Channel   `db:"channel" json:"channel,omitempty"`
+	ChannelID                   string     `json:"channel_id"`
+	CreatedTs                   time.Time  `json:"created_ts"`
+	Description                 string     `json:"description"`
+	ForceUpdatesEnabledTs       *time.Time `json:"force_updates_enabled_ts"`
+	Id                          string     `json:"id"`
+	Name                        string     `json:"name"`
+	PolicyMaxUpdatesPerPeriod   int        `json:"policy_max_updates_per_period"`
+	PolicyOfficeHours           bool       `json:"policy_office_hours"`
+	PolicyPeriodInterval        string     `json:"policy_period_interval"`
+	PolicySafeMode              bool       `json:"policy_safe_mode"`
+	PolicyTimezone              string     `json:"policy_timezone"`
+	PolicyUpdateTimeout         string     `json:"policy_update_timeout"`
+	PolicyUpdatesEnabled        bool       `json:"policy_updates_enabled"`
+	RolloutInProgress           bool       `json:"rollout_in_progress"`
+	Track                       string     `json:"track"`
+	UpdatesDisabledDueToFailure bool       `json:"updates_disabled_due_to_failure"`
 }
 
 // GroupConfig defines model for groupConfig.

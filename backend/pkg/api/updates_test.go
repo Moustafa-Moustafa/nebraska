@@ -189,6 +189,33 @@ func TestGetUpdatePackage_MaxTimedOutUpdatesLimitReached_SafeMode(t *testing.T) 
 	assert.Equal(t, ErrUpdatesDisabled, err)
 }
 
+func TestGetUpdatePackage_ForceEnableClearsBrake(t *testing.T) {
+	a := newForTest(t)
+	defer a.Close()
+
+	tTeam, _ := a.AddTeam(&Team{Name: "test_team"})
+	tApp, _ := a.AddApp(&Application{Name: "test_app", TeamID: tTeam.ID})
+	tPkg, _ := a.AddPackage(&Package{Type: PkgTypeOther, URL: "http://sample.url/pkg", Version: "12.1.0", ApplicationID: tApp.ID})
+	tChannel, _ := a.AddChannel(&Channel{Name: "test_channel", Color: "blue", ApplicationID: tApp.ID, PackageID: null.StringFrom(tPkg.ID)})
+	tGroup, _ := a.AddGroup(&Group{Name: "group", ApplicationID: tApp.ID, ChannelID: null.StringFrom(tChannel.ID), PolicyUpdatesEnabled: true, PolicySafeMode: false, PolicyPeriodInterval: "15 minutes", PolicyMaxUpdatesPerPeriod: 2, PolicyUpdateTimeout: "60 minutes"})
+
+	// Trip the brake directly (simulating the engine after safe-mode timeout).
+	err := a.disableUpdates(tGroup.ID)
+	assert.NoError(t, err)
+
+	// Predicate now gates on the brake → ErrUpdatesDisabled.
+	_, err = a.GetUpdatePackage(Instance{ID: uuid.New().String(), IP: "10.0.0.1"}, NewInstanceApplication(tApp.ID, tGroup.ID, "12.0.0"))
+	assert.Equal(t, ErrUpdatesDisabled, err)
+
+	// Admin force-enables; trigger clears the brake.
+	err = a.ForceEnableUpdates(tGroup.ID)
+	assert.NoError(t, err)
+
+	// Updates flow again.
+	_, err = a.GetUpdatePackage(Instance{ID: uuid.New().String(), IP: "10.0.0.2"}, NewInstanceApplication(tApp.ID, tGroup.ID, "12.0.0"))
+	assert.NoError(t, err)
+}
+
 func TestGetUpdatePackage_ResumeUpdates(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()

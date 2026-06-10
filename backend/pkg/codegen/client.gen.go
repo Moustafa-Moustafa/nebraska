@@ -149,6 +149,9 @@ type ClientInterface interface {
 
 	UpdateGroup(ctx context.Context, appIDorProductID string, groupID string, body UpdateGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ForceEnableGroupUpdates request
+	ForceEnableGroupUpdates(ctx context.Context, appIDorProductID string, groupID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetGroupInstances request
 	GetGroupInstances(ctx context.Context, appIDorProductID string, groupID string, params *GetGroupInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -484,6 +487,18 @@ func (c *Client) UpdateGroupWithBody(ctx context.Context, appIDorProductID strin
 
 func (c *Client) UpdateGroup(ctx context.Context, appIDorProductID string, groupID string, body UpdateGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateGroupRequest(c.Server, appIDorProductID, groupID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ForceEnableGroupUpdates(ctx context.Context, appIDorProductID string, groupID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewForceEnableGroupUpdatesRequest(c.Server, appIDorProductID, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -1763,6 +1778,47 @@ func NewUpdateGroupRequestWithBody(server string, appIDorProductID string, group
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewForceEnableGroupUpdatesRequest generates requests for ForceEnableGroupUpdates
+func NewForceEnableGroupUpdatesRequest(server string, appIDorProductID string, groupID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "appIDorProductID", runtime.ParamLocationPath, appIDorProductID)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupID", runtime.ParamLocationPath, groupID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/apps/%s/groups/%s/force_enable_updates", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -3160,6 +3216,9 @@ type ClientWithResponsesInterface interface {
 
 	UpdateGroupWithResponse(ctx context.Context, appIDorProductID string, groupID string, body UpdateGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupResponse, error)
 
+	// ForceEnableGroupUpdatesWithResponse request
+	ForceEnableGroupUpdatesWithResponse(ctx context.Context, appIDorProductID string, groupID string, reqEditors ...RequestEditorFn) (*ForceEnableGroupUpdatesResponse, error)
+
 	// GetGroupInstancesWithResponse request
 	GetGroupInstancesWithResponse(ctx context.Context, appIDorProductID string, groupID string, params *GetGroupInstancesParams, reqEditors ...RequestEditorFn) (*GetGroupInstancesResponse, error)
 
@@ -3584,6 +3643,28 @@ func (r UpdateGroupResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ForceEnableGroupUpdatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Group
+}
+
+// Status returns HTTPResponse.Status
+func (r ForceEnableGroupUpdatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ForceEnableGroupUpdatesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4316,6 +4397,15 @@ func (c *ClientWithResponses) UpdateGroupWithResponse(ctx context.Context, appID
 	return ParseUpdateGroupResponse(rsp)
 }
 
+// ForceEnableGroupUpdatesWithResponse request returning *ForceEnableGroupUpdatesResponse
+func (c *ClientWithResponses) ForceEnableGroupUpdatesWithResponse(ctx context.Context, appIDorProductID string, groupID string, reqEditors ...RequestEditorFn) (*ForceEnableGroupUpdatesResponse, error) {
+	rsp, err := c.ForceEnableGroupUpdates(ctx, appIDorProductID, groupID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseForceEnableGroupUpdatesResponse(rsp)
+}
+
 // GetGroupInstancesWithResponse request returning *GetGroupInstancesResponse
 func (c *ClientWithResponses) GetGroupInstancesWithResponse(ctx context.Context, appIDorProductID string, groupID string, params *GetGroupInstancesParams, reqEditors ...RequestEditorFn) (*GetGroupInstancesResponse, error) {
 	rsp, err := c.GetGroupInstances(ctx, appIDorProductID, groupID, params, reqEditors...)
@@ -4933,6 +5023,32 @@ func ParseUpdateGroupResponse(rsp *http.Response) (*UpdateGroupResponse, error) 
 	}
 
 	response := &UpdateGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Group
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseForceEnableGroupUpdatesResponse parses an HTTP response from a ForceEnableGroupUpdatesWithResponse call
+func ParseForceEnableGroupUpdatesResponse(rsp *http.Response) (*ForceEnableGroupUpdatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ForceEnableGroupUpdatesResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

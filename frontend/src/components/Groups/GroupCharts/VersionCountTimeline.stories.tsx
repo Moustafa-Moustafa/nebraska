@@ -67,6 +67,8 @@ export const Timeline = {
       description: 'For production clusters (AMD64)',
       created_ts: '2015-09-19T07:09:34.269062+02:00',
       rollout_in_progress: true,
+      updates_disabled_due_to_failure: false,
+      force_updates_enabled_ts: null,
       application_id: 'e96281a6-d1af-4bde-9a0a-97b76e56dc57',
       channel_id: 'e06064ad-4414-4904-9a6e-fd465593d1b2',
       policy_updates_enabled: true,

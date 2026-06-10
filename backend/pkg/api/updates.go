@@ -287,7 +287,7 @@ func (api *API) GetUpdatePackagesForSyncer(inst Instance, instApp InstanceApplic
 func (api *API) enforceRolloutPolicy(instance *Instance, group *Group) error {
 	appID := instance.Application.ApplicationID
 
-	if !group.PolicyUpdatesEnabled {
+	if !group.PolicyUpdatesEnabled || group.UpdatesDisabledDueToFailure {
 		return ErrUpdatesDisabled
 	}
 
@@ -327,7 +327,7 @@ func (api *API) enforceRolloutPolicy(instance *Instance, group *Group) error {
 	}
 
 	if group.PolicySafeMode && updatesStats.UpdatesTimedOut >= effectiveMaxUpdates {
-		if group.PolicyUpdatesEnabled {
+		if !group.UpdatesDisabledDueToFailure {
 			if err := api.disableUpdates(group.ID); err != nil {
 				l.Error().Err(err).Msg("enforceRolloutPolicy - could not disable updates")
 			}
