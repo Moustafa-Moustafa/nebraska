@@ -3,12 +3,10 @@ package api
 import (
 	"database/sql"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
-	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/google/uuid"
 
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
@@ -43,52 +41,9 @@ const (
 // types, so the wrapper forwards to types.NewInstanceApplication).
 var NewInstanceApplication = types.NewInstanceApplication
 
-const (
-	validityInterval     postgresDuration = "1 days"
-	defaultStatsInterval time.Duration    = 24 * time.Hour
-)
-
-type instanceFilterItem int
-
-const (
-	id instanceFilterItem = iota
-	ip
-	lastCheckForUpdates
-)
-
-var sortFilterMap = map[instanceFilterItem]string{
-	id:                  "alias",
-	ip:                  "ip",
-	lastCheckForUpdates: "last_check_for_updates",
-}
-
-type sortOrder int
-
-const (
-	sortOrderAsc sortOrder = iota
-	sortOrderDesc
-)
-
-func sortOrderFromString(str string) sortOrder {
-	val, err := strconv.Atoi(str)
-
-	/*
-		In case value is other than 0 or 1 or there is a wrong type of sortOrder passed
-		fallback to sortOrderDesc
-	*/
-	if (val != 0 && val != 1) || err != nil {
-		return sortOrderDesc
-	}
-	return sortOrder(val)
-}
-
-func sanitizeSortFilterParams(sortFilter string) string {
-	sortFilterNumericValue, _ := strconv.Atoi(sortFilter)
-	if value, ok := sortFilterMap[instanceFilterItem(sortFilterNumericValue)]; ok {
-		return value
-	}
-	return sortFilterMap[id]
-}
+// defaultStatsInterval is kept here so the writer-side instanceStatsQuery
+// (used by UpdateInstanceStats) can default duration when callers pass nil.
+const defaultStatsInterval time.Duration = 24 * time.Hour
 
 // RegisterInstance registers an instance into Nebraska.
 func (api *API) RegisterInstance(inst Instance, instApp InstanceApplication) (*Instance, error) {
@@ -217,195 +172,24 @@ func (api *API) RegisterInstance(inst Instance, instApp InstanceApplication) (*I
 	return api.GetInstance(inst.ID, appID)
 }
 
-// GetInstance returns the instance identified by the id provided.
+// GetInstance forwards to dbreads.Queries.GetInstance.
 func (api *API) GetInstance(instanceID, appID string) (*Instance, error) {
-	var instance Instance
-	query, _, err := goqu.From("instance").
-		Where(goqu.C("id").Eq(instanceID)).
-		ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	err = api.db.QueryRowx(query).StructScan(&instance)
-	if err != nil {
-		return nil, err
-	}
-	/* passing "" to sortFilter while invoking getInstanceApp signifies we are not interested
-	in a sort
-	*/
-	instanceApplication, err := api.getInstanceApp(appID, instance.ID, validityInterval, "", 0)
-	switch err {
-	case nil:
-		instance.Application = *instanceApplication
-	case sql.ErrNoRows:
-		instance.Application = InstanceApplication{}
-	default:
-		return nil, err
-	}
-
-	return &instance, nil
-}
-func (api *API) getInstanceApp(appID, instanceID string, duration postgresDuration, sortFilter string, orderOfSort sortOrder) (*InstanceApplication, error) {
-	var instanceApp InstanceApplication
-	query, _, err := api.instanceAppQuery(appID, instanceID, duration, sortFilter, orderOfSort).ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	err = api.db.QueryRowx(query).StructScan(&instanceApp)
-	if err != nil {
-		return nil, err
-	}
-	return &instanceApp, nil
+	return api.queries.GetInstance(instanceID, appID)
 }
 
-// GetInstanceStatusHistory returns the status history of an instance in the
-// context of the application/group provided.
+// GetInstanceStatusHistory forwards to dbreads.Queries.GetInstanceStatusHistory.
 func (api *API) GetInstanceStatusHistory(instanceID, appID, groupID string, limit uint64) ([]*InstanceStatusHistoryEntry, error) {
-	var instanceStatusHistory []*InstanceStatusHistoryEntry
-	query, _, err := api.instanceStatusHistoryQuery(instanceID, appID, groupID, limit).ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var instanceStatusHistoryEntity InstanceStatusHistoryEntry
-		err = rows.StructScan(&instanceStatusHistoryEntity)
-		if err != nil {
-			return nil, err
-		}
-		if instanceStatusHistoryEntity.Status == InstanceStatusError {
-			instanceStatusHistoryEntity.ErrorCode, err = api.GetEvent(instanceID, appID, instanceStatusHistoryEntity.CreatedTs)
-			if err != nil {
-				return nil, err
-			}
-		}
-		instanceStatusHistory = append(instanceStatusHistory, &instanceStatusHistoryEntity)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return instanceStatusHistory, nil
+	return api.queries.GetInstanceStatusHistory(instanceID, appID, groupID, limit)
 }
 
-func prepareGetInstancesQuery(instanceQuery *goqu.SelectDataset, instanceAppQuery *goqu.SelectDataset) *goqu.SelectDataset {
-	return goqu.From(goqu.L("Instance")).With("Instance", instanceQuery).With("application", instanceAppQuery).InnerJoin(
-		goqu.L("application"),
-		goqu.On(goqu.L("Instance.id").Eq(goqu.L("application.instance_id"))),
-	).Select(goqu.L("*"))
-}
-
-func prepareSearchQuery(finalQuery *goqu.SelectDataset, p InstancesQueryParams) *goqu.SelectDataset {
-	searchFilter := p.SearchFilter
-	searchValue := p.SearchValue
-	searchExpression := "%" + searchValue + "%"
-	outputQuery := finalQuery
-	if searchFilter == "All" && searchValue != "" {
-		// search by alias -> ids -> ip -> date
-		outputQuery = finalQuery.Where(
-			goqu.Or(goqu.I("alias").ILike(searchExpression),
-				goqu.I("id").ILike(searchExpression),
-				goqu.L("text(ip)").Like(searchExpression)))
-	} else if searchFilter != "" && searchValue != "" {
-		if searchFilter == "ip" {
-			outputQuery = finalQuery.Where(
-				goqu.L("text(ip)").Like(searchExpression))
-		} else {
-			outputQuery = finalQuery.Where(
-				goqu.I(searchFilter).ILike(searchExpression))
-		}
-	}
-	return outputQuery
-}
-
-// GetInstances returns all instances that match with the provided criteria.
+// GetInstances forwards to dbreads.Queries.GetInstances.
 func (api *API) GetInstances(p InstancesQueryParams, duration string) (InstancesWithTotal, error) {
-	var instances []*Instance
-	var err error
-	totalCount, err := api.GetInstancesCount(p, duration)
-	if err != nil {
-		return InstancesWithTotal{}, err
-	}
-	p.Page, p.PerPage = validatePaginationParams(p.Page, p.PerPage)
-	var dbDuration postgresDuration
-	dbDuration, _, err = durationParamToPostgresTimings(durationParam(duration))
-	if err != nil {
-		return InstancesWithTotal{}, err
-	}
-
-	limit, offset := sqlPaginate(p.Page, p.PerPage)
-	sortFilter := sanitizeSortFilterParams(p.SortFilter)
-	sortOrder := sortOrderFromString(p.SortOrder)
-	instancesQuery := api.instancesQuery(p, dbDuration)
-	instancesQuery = instancesQuery.Select("id", "ip", "created_ts", goqu.Case().
-		When(goqu.C("alias").Neq(""), goqu.C("alias")).Else(goqu.C("id")).As("alias"))
-
-	instanceAppQuery := prepareInstanceAppQuery()
-	finalQuery := prepareGetInstancesQuery(instancesQuery, instanceAppQuery)
-	switch sortOrder {
-	case sortOrderAsc:
-		finalQuery = finalQuery.Order(goqu.I(sortFilter).Asc().NullsLast())
-	case sortOrderDesc:
-		finalQuery = finalQuery.Order(goqu.I(sortFilter).Desc().NullsLast())
-	}
-
-	finalQuery = prepareSearchQuery(finalQuery, p)
-	query, _, err := finalQuery.
-		Limit(limit).
-		Offset(offset).
-		ToSQL()
-	if err != nil {
-		return InstancesWithTotal{}, err
-	}
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return InstancesWithTotal{}, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var instance Instance
-		err = rows.Scan(&instance.ID, &instance.IP, &instance.CreatedTs, &instance.Alias,
-			&instance.Application.Version, &instance.Application.Status, &instance.Application.LastCheckForUpdates,
-			&instance.Application.LastUpdateVersion, &instance.Application.UpdateInProgress,
-			&instance.Application.ApplicationID, &instance.Application.GroupID, &instance.Application.InstanceID)
-		if err != nil {
-			return InstancesWithTotal{}, err
-		}
-		instances = append(instances, &instance)
-	}
-	if err := rows.Err(); err != nil {
-		return InstancesWithTotal{}, err
-	}
-	result := InstancesWithTotal{
-		TotalInstances: uint64(totalCount),
-		Instances:      instances,
-	}
-	return result, nil
+	return api.queries.GetInstances(p, duration)
 }
-func prepareInstanceAppQuery() *goqu.SelectDataset {
-	return goqu.From("instance_application").
-		Select("version", "status", "last_check_for_updates", "last_update_version", "update_in_progress", "application_id", "group_id", "instance_id")
-}
+
+// GetInstancesCount forwards to dbreads.Queries.GetInstancesCount.
 func (api *API) GetInstancesCount(p InstancesQueryParams, duration string) (int, error) {
-	var err error
-
-	var dbDuration postgresDuration
-	dbDuration, _, err = durationParamToPostgresTimings(durationParam(duration))
-	if err != nil {
-		return 0, err
-	}
-	instancesQuery := api.instancesQuery(p, dbDuration)
-	instancesQuery = instancesQuery.Select("id", "ip", "created_ts", goqu.Case().
-		When(goqu.C("alias").Neq(""), goqu.C("alias")).Else(goqu.C("id")).As("alias"))
-
-	instanceAppQuery := prepareInstanceAppQuery()
-	finalQuery := prepareGetInstancesQuery(instancesQuery, instanceAppQuery)
-	finalQuery = prepareSearchQuery(finalQuery, p).Select(goqu.L("COUNT(*)"))
-
-	return api.GetCountQuery(finalQuery)
+	return api.queries.GetInstancesCount(p, duration)
 }
 
 func (api *API) UpdateInstance(instanceID string, alias string) (*Instance, error) {
@@ -524,74 +308,14 @@ func (api *API) updateInstanceObjStatus(instance *Instance, newStatus int) error
 	return api.updateInstanceData(instance, insertData)
 }
 
-// instanceAppQuery returns a SelectDataset prepared to return the app status
-// of the app identified by the application id provided for a given instance.
-func (api *API) instanceAppQuery(appID, instanceID string, duration postgresDuration, sortFilter string, orderOfSort sortOrder) *goqu.SelectDataset {
-	query := prepareInstanceAppQuery().Where(goqu.C("application_id").Eq(appID)).
-		Where(goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", duration))
-
-	if instanceID != "" {
-		query = query.Where(goqu.C("instance_id").Eq(instanceID))
-	}
-
-	if sortFilter != "" {
-		switch orderOfSort {
-		case sortOrderAsc:
-			query = query.Order(goqu.I(sortFilter).Asc().NullsLast())
-		case sortOrderDesc:
-			query = query.Order(goqu.I(sortFilter).Desc().NullsLast())
-		}
-	}
-	return query
-}
-
-// ignoreFakeInstanceCondition forwards to shared.IgnoreFakeInstanceCondition.
-var ignoreFakeInstanceCondition = shared.IgnoreFakeInstanceCondition
-
-func (api *API) getFilterInstancesQuery(selectPart exp.LiteralExpression, p InstancesQueryParams, duration postgresDuration) *goqu.SelectDataset {
-	query := goqu.From("instance_application").
-		Select(selectPart).
-		Where(goqu.C("application_id").Eq(p.ApplicationID), goqu.C("group_id").Eq(p.GroupID)).
-		Where(goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", duration),
-			goqu.L(ignoreFakeInstanceCondition("instance_id")))
-
-	if p.Status == InstanceStatusUndefined {
-		query = query.Where(goqu.L("status IS NULL"))
-	} else if p.Status != 0 {
-		query = query.Where(goqu.C("status").Eq(p.Status))
-	}
-	if p.Version != "" {
-		query = query.Where(goqu.C("version").Eq(p.Version))
-	}
-	return query
-}
-
-// instancesQuery returns a SelectDataset prepared to return all instances
-// that match the criteria provided in InstancesQueryParams.
-func (api *API) instancesQuery(p InstancesQueryParams, duration postgresDuration) *goqu.SelectDataset {
-	instancesSubquery := api.getFilterInstancesQuery(goqu.L("instance_id"), p, duration)
-
-	return goqu.From("instance").
-		Where(goqu.L("id IN ?", instancesSubquery))
-}
-
-// instanceStatusHistoryQuery returns a SelectDataset prepared to return the
-// status history of a given instance in the context of an application/group.
-func (api *API) instanceStatusHistoryQuery(instanceID, appID, groupID string, limit uint64) *goqu.SelectDataset {
-	if limit == 0 {
-		limit = 20
-	}
-	return goqu.From("instance_status_history").Where(goqu.C("instance_id").Eq(instanceID)).
-		Where(goqu.C("application_id").Eq(appID)).
-		Where(goqu.C("group_id").Eq(groupID)).
-		Order(goqu.C("created_ts").Desc()).
-		Limit(uint(limit))
-}
-
-// GetDefaultInterval returns the default interval used for instance stats queries.
+// GetDefaultInterval forwards to dbreads.Queries.GetDefaultInterval.
 func (api *API) GetDefaultInterval() time.Duration {
-	return defaultStatsInterval
+	return api.queries.GetDefaultInterval()
 }
+
+// ignoreFakeInstanceCondition forwards to shared.IgnoreFakeInstanceCondition;
+// kept here because the writer-side instanceStatsQuery below references it.
+var ignoreFakeInstanceCondition = shared.IgnoreFakeInstanceCondition
 
 // instanceStatsQuery returns a SelectDataset to estimate the active fleet size at a given point in time.
 // It answers "how many instances were part of the active fleet on day X",
@@ -601,6 +325,10 @@ func (api *API) GetDefaultInterval() time.Duration {
 // whether an instance was active on a specific past day. Instead, we count instances that:
 //  1. existed at the time (created_ts <= timestamp)
 //  2. are still alive (last_check_for_updates > timestamp - duration)
+//
+// This is duplicated in pkg/api/dbreads/instances.go for the read-side
+// GetInstanceStats / GetInstanceStatsByTimestamp callers. Keep the two
+// copies in sync.
 func (api *API) instanceStatsQuery(t *time.Time, duration *time.Duration) *goqu.SelectDataset {
 	if t == nil {
 		now := time.Now().UTC()
@@ -677,63 +405,14 @@ func (api *API) instanceStatsQuery(t *time.Time, duration *time.Duration) *goqu.
 	return query
 }
 
-// GetInstanceStats returns an InstanceStats table with all instances that have
-// been previously been checked in.
+// GetInstanceStats forwards to dbreads.Queries.GetInstanceStats.
 func (api *API) GetInstanceStats() ([]InstanceStats, error) {
-	query, _, err := goqu.From("instance_stats").
-		Order(goqu.C("timestamp").Asc()).ToSQL()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var instances []InstanceStats
-	for rows.Next() {
-		var instance InstanceStats
-		err = rows.StructScan(&instance)
-		if err != nil {
-			return nil, err
-		}
-		instances = append(instances, instance)
-	}
-
-	return instances, nil
+	return api.queries.GetInstanceStats()
 }
 
-// GetInstanceStatsByTimestamp returns an InstanceStats array of instances matching a
-// given timestamp value, ordered by version.
+// GetInstanceStatsByTimestamp forwards to dbreads.Queries.GetInstanceStatsByTimestamp.
 func (api *API) GetInstanceStatsByTimestamp(t time.Time) ([]InstanceStats, error) {
-	timestamp := goqu.L("timestamp ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")))
-
-	query, _, err := goqu.From("instance_stats").
-		Where(goqu.C("timestamp").Eq(timestamp)).
-		Order(goqu.C("version").Asc()).ToSQL()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var instances []InstanceStats
-	for rows.Next() {
-		var instance InstanceStats
-		err = rows.StructScan(&instance)
-		if err != nil {
-			return nil, err
-		}
-		instances = append(instances, instance)
-	}
-
-	return instances, nil
+	return api.queries.GetInstanceStatsByTimestamp(t)
 }
 
 // UpdateInstanceStats updates the instance_stats table with instances checked
