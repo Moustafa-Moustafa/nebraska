@@ -13,6 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	migrate "github.com/rubenv/sql-migrate"
 
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
 
 	// PostgreSQL Driver and Toolkit
@@ -65,6 +66,11 @@ type API struct {
 	db       *sqlx.DB
 	dbDriver string
 	dbURL    string
+
+	// queries is the shared read surface. Owned by *API and shared with
+	// admin.Service / runtime.Service in later phases. Read methods on *API
+	// (GetApp, GetGroup, ...) forward to this field.
+	queries *dbreads.Queries
 
 	// disableUpdatesOnFailedRollout defines wether to disable updates
 	// after a first rollout attempt failed (ResultFailed)
@@ -133,6 +139,11 @@ func New(options ...func(*API) error) (*API, error) {
 			return nil, err
 		}
 	}
+
+	// Wire the shared reads. Constructed last so any Option* that swaps
+	// api.db (e.g. test fixtures) is already applied.
+	api.queries = dbreads.New(api.db, api.maxFloorsPerResponse)
+
 	return api, nil
 }
 

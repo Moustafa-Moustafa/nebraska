@@ -1,0 +1,106 @@
+package dbreads
+
+import (
+	"database/sql"
+
+	"github.com/doug-martin/goqu/v9"
+
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
+)
+
+// GetChannel returns the channel identified by the id provided. The
+// returned channel has its Package field hydrated when set.
+func (q *Queries) GetChannel(channelID string) (*types.Channel, error) {
+	var channel types.Channel
+
+	query, _, err := goqu.From("channel").
+		Where(goqu.C("id").Eq(channelID)).
+		ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	if err := q.db.QueryRowx(query).StructScan(&channel); err != nil {
+		return nil, err
+	}
+	packageEntity, err := q.getPackage(channel.PackageID)
+	switch err {
+	case nil:
+		channel.Package = packageEntity
+	case sql.ErrNoRows:
+		channel.Package = nil
+	default:
+		return nil, err
+	}
+	return &channel, nil
+}
+
+// GetChannelsCount returns the total number of channels in an app.
+func (q *Queries) GetChannelsCount(appID string) (int, error) {
+	query := goqu.From("channel").
+		Where(goqu.C("application_id").Eq(appID)).
+		Select(goqu.L("count(*)"))
+	return q.GetCountQuery(query)
+}
+
+// GetChannels returns a paginated list of channels for the application.
+func (q *Queries) GetChannels(appID string, page, perPage uint64) ([]*types.Channel, error) {
+	page, perPage = shared.ValidatePaginationParams(page, perPage)
+	limit, offset := shared.SQLPaginate(page, perPage)
+	query, _, err := q.channelsQuery().
+		Where(goqu.C("application_id").Eq(appID)).
+		Limit(limit).
+		Offset(offset).
+		ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	return q.getChannelsFromQuery(query)
+}
+
+// GetChannelsForApp returns every channel for the given application. Used
+// internally by application reads to hydrate Application.Channels. Renamed
+// from the previous private `getChannels` so callers across the package
+// boundary (pkg/api shims) can reach it.
+func (q *Queries) GetChannelsForApp(appID string) ([]*types.Channel, error) {
+	query, _, err := q.channelsQuery().
+		Where(goqu.C("application_id").Eq(appID)).
+		ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	return q.getChannelsFromQuery(query)
+}
+
+func (q *Queries) getChannelsFromQuery(query string) ([]*types.Channel, error) {
+	var channels []*types.Channel
+	rows, err := q.db.Queryx(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		channel := types.Channel{}
+		if err := rows.StructScan(&channel); err != nil {
+			return nil, err
+		}
+		packageEntity, err := q.getPackage(channel.PackageID)
+		switch err {
+		case nil:
+			channel.Package = packageEntity
+		case sql.ErrNoRows:
+			channel.Package = nil
+		default:
+			return nil, err
+		}
+		channels = append(channels, &channel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
+func (q *Queries) channelsQuery() *goqu.SelectDataset {
+	return goqu.From("channel").Order(goqu.I("name").Asc())
+}

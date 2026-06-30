@@ -1,10 +1,7 @@
 package api
 
 import (
-	"crypto/md5"
 	"errors"
-	"fmt"
-	"io"
 
 	"github.com/doug-martin/goqu/v9"
 
@@ -42,48 +39,14 @@ func (api *API) AddUser(user *User) (*User, error) {
 	return user, nil
 }
 
-// GetUser returns the user identified by the username provided.
+// GetUser forwards to api.queries; SQL in pkg/api/dbreads/users.go.
 func (api *API) GetUser(username string) (*User, error) {
-	var user User
-	query, _, err := goqu.From("users").
-		Where(goqu.C("username").Eq(username)).
-		ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	err = api.db.QueryRowx(query).StructScan(&user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return api.queries.GetUser(username)
 }
 
+// GetUsersInTeam forwards to api.queries; SQL in pkg/api/dbreads/users.go.
 func (api *API) GetUsersInTeam(teamID string) ([]*User, error) {
-	var users []*User
-	query, _, err := goqu.From("users").
-		Where(goqu.C("team_id").Eq(teamID)).
-		ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var user User
-		err := rows.StructScan(&user)
-		if err != nil {
-			return nil, err
-		}
-		users = append(users, &user)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return users, nil
+	return api.queries.GetUsersInTeam(teamID)
 }
 
 // UpdateUserPassword updates the password of the provided user.
@@ -114,13 +77,7 @@ func (api *API) UpdateUserPassword(username, newPassword string) error {
 	return nil
 }
 
-// GenerateUserSecret generates a md5 hash from the username and password
-// provided (username:realm:password).
+// GenerateUserSecret forwards to api.queries; impl in pkg/api/dbreads/users.go.
 func (api *API) GenerateUserSecret(username, password string) (string, error) {
-	h := md5.New()
-	if _, err := io.WriteString(h, username+":"+Realm+":"+password); err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
+	return api.queries.GenerateUserSecret(username, password)
 }

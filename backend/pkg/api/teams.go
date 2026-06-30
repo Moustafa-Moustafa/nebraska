@@ -9,48 +9,14 @@ import (
 // Team is owned by pkg/api/internal/types; re-exported here.
 type Team = types.Team
 
+// GetTeams forwards to api.queries; SQL in pkg/api/dbreads/teams.go.
 func (api *API) GetTeams() ([]*Team, error) {
-	var teams []*Team
-	query, _, err := goqu.From("team").
-		Select("id", "name", "created_ts").
-		Order(goqu.C("name").Asc()).
-		ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := api.db.Queryx(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var team Team
-		err := rows.StructScan(&team)
-		if err != nil {
-			return nil, err
-		}
-		teams = append(teams, &team)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return teams, nil
+	return api.queries.GetTeams()
 }
 
+// GetTeam forwards to api.queries; SQL in pkg/api/dbreads/teams.go.
 func (api *API) GetTeam() (*Team, error) {
-	var team = &Team{}
-	query, _, err := goqu.From("team").
-		Select("id", "name", "created_ts").
-		Limit(1).
-		ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	err = api.db.QueryRowx(query).StructScan(team)
-	if err != nil {
-		return nil, err
-	}
-	return team, nil
+	return api.queries.GetTeam()
 }
 
 func (api *API) UpdateTeam(team *Team) error {
