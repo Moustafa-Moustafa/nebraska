@@ -3,6 +3,15 @@ package api
 import (
 	"database/sql"
 	"fmt"
+
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
+)
+
+// AppInstancesPerChannelMetric and FailedUpdatesMetric are owned by
+// pkg/api/internal/types; re-exported here.
+type (
+	AppInstancesPerChannelMetric = types.AppInstancesPerChannelMetric
+	FailedUpdatesMetric          = types.FailedUpdatesMetric
 )
 
 var (
@@ -23,13 +32,6 @@ ORDER BY app_name
 `, ignoreFakeInstanceCondition("e.instance_id"))
 )
 
-type AppInstancesPerChannelMetric struct {
-	ApplicationName string `db:"app_name" json:"app_name"`
-	Version         string `db:"version" json:"version"`
-	ChannelName     string `db:"channel_name" json:"channel_name"`
-	InstancesCount  int    `db:"instances_count" json:"instances_count"`
-}
-
 func (api *API) GetAppInstancesPerChannelMetrics() ([]AppInstancesPerChannelMetric, error) {
 	var metrics []AppInstancesPerChannelMetric
 	rows, err := api.db.Queryx(appInstancesPerChannelMetricSQL)
@@ -49,11 +51,6 @@ func (api *API) GetAppInstancesPerChannelMetrics() ([]AppInstancesPerChannelMetr
 		return nil, err
 	}
 	return metrics, nil
-}
-
-type FailedUpdatesMetric struct {
-	ApplicationName string `db:"app_name" json:"app_name"`
-	FailureCount    int    `db:"fail_count" json:"fail_count"`
 }
 
 func (api *API) GetFailedUpdatesMetrics() ([]FailedUpdatesMetric, error) {

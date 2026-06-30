@@ -51,13 +51,12 @@ var (
 	// ErrInvalidSemver indicates that the provided semver version is not valid.
 	ErrInvalidSemver = errors.New("nebraska: invalid semver")
 
-	// ErrInvalidArch indicates that the provided architecture is not valid/supported
-	ErrInvalidArch = errors.New("nebraska: invalid/unsupported arch")
-
 	// ErrArchMismatch indicates that arches of two objects didn't
 	// match (for example, for a package and channel)
 	ErrArchMismatch = errors.New("nebraska: mismatched arches")
 )
+
+// ErrInvalidArch is re-exported from arch.go (see types.ErrInvalidArch).
 
 const migrationsTable = "database_migrations"
 

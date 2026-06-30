@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/doug-martin/goqu/v9"
+
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
 const (
@@ -21,14 +22,8 @@ var (
 	ErrUpdatingPassword = errors.New("nebraska: error updating password")
 )
 
-// User represents a Nebraska user.
-type User struct {
-	ID        string    `db:"id" json:"id"`             // UUID v4 unique, created automatically
-	Username  string    `db:"username" json:"username"` // unique username
-	Secret    string    `db:"secret" json:"secret"`     // md5 hash from (username:realm:password)
-	CreatedTs time.Time `db:"created_ts" json:"-"`      // Created automatically
-	TeamID    string    `db:"team_id" json:"team_id"`   // User can be in single team
-}
+// User is owned by pkg/api/internal/types; re-exported here.
+type User = types.User
 
 // AddTeam registers a team.
 func (api *API) AddUser(user *User) (*User, error) {
