@@ -11,6 +11,7 @@ import (
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/google/uuid"
 
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -544,9 +545,8 @@ func (api *API) instanceAppQuery(appID, instanceID string, duration postgresDura
 	return query
 }
 
-func ignoreFakeInstanceCondition(instanceIDField string) string {
-	return fmt.Sprintf(`(%[1]s IS NULL OR %[1]s NOT LIKE '{________-____-____-____-____________}')`, instanceIDField)
-}
+// ignoreFakeInstanceCondition forwards to shared.IgnoreFakeInstanceCondition.
+var ignoreFakeInstanceCondition = shared.IgnoreFakeInstanceCondition
 
 func (api *API) getFilterInstancesQuery(selectPart exp.LiteralExpression, p InstancesQueryParams, duration postgresDuration) *goqu.SelectDataset {
 	query := goqu.From("instance_application").

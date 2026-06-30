@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -32,7 +33,7 @@ type (
 type (
 	durationParam    string
 	durationCode     int
-	postgresDuration string
+	postgresDuration = shared.PostgresDuration // alias to internal/shared so reads can move out cleanly
 	postgresInterval string
 )
 

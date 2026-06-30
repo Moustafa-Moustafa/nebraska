@@ -3,50 +3,28 @@ package api
 import (
 	"time"
 
-	"github.com/blang/semver/v4"
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 )
 
-const (
-	defaultPage    uint64 = 1
-	defaultPerPage uint64 = 10
-)
+// validatePaginationParams forwards to shared.ValidatePaginationParams. It
+// stays here as a thin local name so existing pkg/api callers compile
+// unchanged.
+var validatePaginationParams = shared.ValidatePaginationParams
 
-// validatePaginationParams validates the pagination parameters provided,
-// setting them to the default values in case they are invalid.
-func validatePaginationParams(page, perPage uint64) (uint64, uint64) {
-	if page < 1 {
-		page = defaultPage
-	}
+// sqlPaginate forwards to shared.SQLPaginate.
+var sqlPaginate = shared.SQLPaginate
 
-	if perPage < 1 {
-		perPage = defaultPerPage
-	}
+// isValidSemver forwards to shared.IsValidSemver.
+var isValidSemver = shared.IsValidSemver
 
-	return page, perPage
-}
-
-// isTimezoneValid checks if the provided timezone is valid.
+// isTimezoneValid checks if the provided timezone is valid. Stays local:
+// only admin-side group writers use it, no sub-package needs it.
 func isTimezoneValid(tz string) bool {
 	if tz == "" {
 		return false
 	}
-
 	if _, err := time.LoadLocation(tz); err != nil {
 		return false
 	}
-
 	return true
-}
-
-// isValidSemver checks if the provided string represents a valid semver
-// version.
-func isValidSemver(version string) bool {
-	if _, err := semver.Make(version); err != nil {
-		return false
-	}
-	return true
-}
-
-func sqlPaginate(page, perPage uint64) (uint, uint) {
-	return uint(perPage), uint(page-1) * uint(perPage)
 }
