@@ -78,7 +78,8 @@ func NewInstanceApplication(appID, groupID, version string) InstanceApplication 
 	return InstanceApplication{ApplicationID: appID, GroupID: null.StringFrom(groupID), Version: version}
 }
 
-// InstanceStatusHistoryEntry represents an entry in the instance status history.
+// InstanceStatusHistoryEntry represents an entry in the instance status
+// history.
 type InstanceStatusHistoryEntry struct {
 	ID            int         `db:"id" json:"-"`
 	Status        int         `db:"status" json:"status"`

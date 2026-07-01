@@ -14,7 +14,6 @@ const (
 	flatcarAppID = "e96281a6-d1af-4bde-9a0a-97b76e56dc57"
 )
 
-// Application is owned by pkg/api/internal/types; re-exported here.
 type Application = types.Application
 
 // AddApp registers the provided application.
@@ -176,22 +175,19 @@ func (api *API) DeleteApp(appID string) error {
 }
 
 // GetApp returns the application identified by the id provided.
-// GetApp forwards to dbreads.Queries.GetApp.
 func (api *API) GetApp(appID string) (*Application, error) {
 	return api.queries.GetApp(appID)
 }
 
-// GetAppsCount forwards to dbreads.Queries.GetAppsCount.
 func (api *API) GetAppsCount(teamID string) (int, error) {
 	return api.queries.GetAppsCount(teamID)
 }
 
-// GetApps forwards to dbreads.Queries.GetApps.
+// GetApps returns all applications that belong to the team id provided.
 func (api *API) GetApps(teamID string, page, perPage uint64) ([]*Application, error) {
 	return api.queries.GetApps(teamID, page, perPage)
 }
 
-// GetAppID forwards to dbreads.Queries.GetAppID.
 func (api *API) GetAppID(appOrProductID string) (string, error) {
 	return api.queries.GetAppID(appOrProductID)
 }

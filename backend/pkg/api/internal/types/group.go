@@ -6,8 +6,6 @@ import (
 	"gopkg.in/guregu/null.v4"
 )
 
-// GroupDescriptor identifies a group by app id + track name + arch (used in
-// caches that map descriptors to group IDs).
 type GroupDescriptor struct {
 	AppID string
 	Track string

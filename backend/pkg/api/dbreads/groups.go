@@ -68,8 +68,7 @@ func durationParamToPostgresTimings(duration durationParam) (shared.PostgresDura
 	return durationCodeToPostgresTimings(code)
 }
 
-// isNightlyVersion returns whether a version is a nightly build (not counted
-// in the version-count timelines).
+// isNightlyVersion returns if a version is nightly or not
 func isNightlyVersion(version string) bool {
 	return strings.Contains(version, "nightly")
 }
@@ -88,13 +87,6 @@ func updateVersionTimeline(timeline map[time.Time]types.VersionCountMap, spans [
 		}
 	}
 }
-
-// --- caches --------------------------------------------------------------
-// cachedGroups maps GroupDescriptor -> group ID for GetGroupID. Invalidated
-// whenever a group is added/updated/deleted by an admin writer in pkg/api.
-//
-// cachedGroupVersionCount is a small TTL cache for GetGroupVersionCountTimeline.
-// SetCacheLifespanForTest lets tests shrink the TTL for fast invalidation.
 
 type groupDurationCacheKey struct {
 	GroupID  string
@@ -124,8 +116,8 @@ func (q *Queries) UpdateCachedGroups() {
 	cachedGroupsLock.Unlock()
 }
 
-// SetCacheLifespanForTest sets the TTL used by GetGroupVersionCountTimeline's
-// in-memory cache and returns the previous value so tests can restore it.
+// SetCacheLifespanForTest temporarily sets the cache lifespan for testing purposes.
+// Returns the previous lifespan so it can be restored.
 func SetCacheLifespanForTest(lifespan time.Duration) time.Duration {
 	cachedGroupVersionCountLock.Lock()
 	prev := cachedGroupVersionCountLifespan
@@ -133,8 +125,6 @@ func SetCacheLifespanForTest(lifespan time.Duration) time.Duration {
 	cachedGroupVersionCountLock.Unlock()
 	return prev
 }
-
-// --- reads ---------------------------------------------------------------
 
 // GetGroup returns the group identified by the id provided.
 func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
@@ -235,7 +225,7 @@ func (q *Queries) GetGroupsCount(appID string) (int, error) {
 	return q.GetCountQuery(query)
 }
 
-// GetGroups returns a paginated list of groups for the given app.
+// GetGroups returns all groups that belong to the application provided.
 func (q *Queries) GetGroups(appID string, page, perPage uint64) ([]*types.Group, error) {
 	page, perPage = shared.ValidatePaginationParams(page, perPage)
 	limit, offset := shared.SQLPaginate(page, perPage)
@@ -290,10 +280,8 @@ func (q *Queries) getGroupsFromQuery(query string) ([]*types.Group, error) {
 	return groups, nil
 }
 
-// GetGroupUpdatesStats returns the distribution of update status for the
-// instances in the given group. Renamed from the previous private
-// getGroupUpdatesStats so runtime writers in pkg/api/updates.go and
-// pkg/api/events.go can reach it across the package boundary.
+// GetGroupUpdatesStats returns a set of statistics about the distribution of
+// updates and their status in the group provided.
 func (q *Queries) GetGroupUpdatesStats(group *types.Group) (*types.UpdatesStats, error) {
 	var updatesStats types.UpdatesStats
 
@@ -323,10 +311,11 @@ func (q *Queries) GetGroupUpdatesStats(group *types.Group) (*types.UpdatesStats,
 	return &updatesStats, nil
 }
 
-// groupsQuery returns the base SELECT for groups, joining the node-local
-// group_local sidecar so the effective policy values reflect the COALESCE of
-// (group_local override, groups default). Safe INNER JOIN because the AFTER
-// INSERT trigger on groups guarantees a matching group_local row.
+// groupsQuery returns a SelectDataset prepared to return all groups. It joins
+// the node-local group_local sidecar to expose rollout_in_progress and the
+// effective policy values, where effective means COALESCE(override, default).
+// The INNER JOIN is safe because the AFTER INSERT trigger on groups guarantees
+// a matching group_local row.
 func (q *Queries) groupsQuery() *goqu.SelectDataset {
 	eff := func(name string) interface{} {
 		return goqu.COALESCE(goqu.I("group_local."+name+"_override"), goqu.I("groups."+name)).As(name)
@@ -356,8 +345,7 @@ func (q *Queries) groupsQuery() *goqu.SelectDataset {
 		Order(goqu.I("groups.created_ts").Desc())
 }
 
-// GetGroupVersionBreakdown returns the version breakdown of all alive
-// instances in the given group.
+// GetGroupVersionBreakdown returns a version breakdown of all instances running on a given group.
 func (q *Queries) GetGroupVersionBreakdown(groupID string) ([]*types.VersionBreakdownEntry, error) {
 	var entryList []*types.VersionBreakdownEntry
 
@@ -396,8 +384,8 @@ func (q *Queries) GetGroupVersionBreakdown(groupID string) ([]*types.VersionBrea
 	return entryList, nil
 }
 
-// GetGroupInstancesStats returns a summary of the status of the instances in
-// the given group over the given duration window.
+// getGroupInstancesStats returns a summary of the status of the
+// instances that belong to a given group.
 func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.InstancesStatusStats, error) {
 	var instancesStats types.InstancesStatusStats
 	durationString, _, err := durationParamToPostgresTimings(durationParam(duration))
@@ -447,9 +435,24 @@ func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.Insta
 	return &instancesStats, nil
 }
 
-// GetGroupVersionCountTimeline computes the instance version count timeline
-// for the given group/duration. Backed by a TTL cache; the second return
-// value is true on cache hit.
+// This function computes instance version count form two different tables instance_application and instance_status_history.
+// There are three types of instances that can exist.
+// 1. Instances without any update history.
+// 2. Instances which got updated in the duration(ie 30d,7d etc).
+// 3. Instances that have updated but not in the duration.
+// Here 1,3 doesn't contribute to growth or decline of the graph, they are straight lines in the graph.
+// Based on this logic three queries are made concurrently and calculated to achieve the end result.
+//
+// Query 1 generates the time series using the `generate_series` postgres function and groups the
+// instances without any update history(ie instance_application without any matching instance_status_history entry)
+// based on version.
+//
+// Query 2 filters all instance_application with instance_status_history in the duration sorted desc by instance_id and created_ts
+// So we have entries of instances_status_history based on the created_ts the count is increased for the corresponding versions in
+// the corresponding spans programatically
+//
+// Query 3 filters all instance without any instance_status_history in the duration and takes the latest version for each instance and groups
+// them to give a base count for all the versions. These version count values are directly added to all spans.
 func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) (map[time.Time](types.VersionCountMap), bool, error) {
 	cacheKey := groupDurationCacheKey{GroupID: groupID, Duration: duration}
 
@@ -639,8 +642,6 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 	return timelineCount, false, nil
 }
 
-// GetGroupStatusCountTimeline computes the status x version count timeline
-// for the given group/duration.
 func (q *Queries) GetGroupStatusCountTimeline(groupID string, duration string) (map[time.Time](map[int](types.VersionCountMap)), error) {
 	var timelineEntry []types.StatusVersionCountTimelineEntry
 	durationString, interval, err := durationParamToPostgresTimings(durationParam(duration))

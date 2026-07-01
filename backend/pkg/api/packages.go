@@ -12,10 +12,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// Package, File, ChannelPackageFloor, StringArray, and the PkgType* constants
-// are owned by pkg/api/internal/types; they are re-exported here so external
-// callers keep using api.Package, api.File, api.PkgTypeFlatcar, etc.
-
 const (
 	PkgTypeFlatcar = types.PkgTypeFlatcar
 	PkgTypeDocker  = types.PkgTypeDocker
@@ -360,24 +356,23 @@ func (api *API) DeletePackage(pkgID string) error {
 	return nil
 }
 
-// --- Read forwarders --- SQL lives in pkg/api/dbreads/packages.go.
-
-// GetPackage forwards to api.queries.
+// GetPackage returns the package identified by the id provided.
 func (api *API) GetPackage(pkgID string) (*Package, error) {
 	return api.queries.GetPackage(pkgID)
 }
 
-// GetPackageByVersionAndArch forwards to api.queries.
+// GetPackageByVersionAndArch returns the package identified by the
+// application ID, version and arch provided.
 func (api *API) GetPackageByVersionAndArch(appID, version string, arch Arch) (*Package, error) {
 	return api.queries.GetPackageByVersionAndArch(appID, version, arch)
 }
 
-// GetPackagesCount forwards to api.queries.
+// GetPackagesCount retuns the total number of package in an app
 func (api *API) GetPackagesCount(appID string, searchVersion *string) (int, error) {
 	return api.queries.GetPackagesCount(appID, searchVersion)
 }
 
-// GetPackages forwards to api.queries.
+// GetPackages returns all packages associated to the application provided.
 func (api *API) GetPackages(appID string, page, perPage uint64, searchVersion *string) ([]*Package, error) {
 	return api.queries.GetPackages(appID, page, perPage, searchVersion)
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// ChannelFloorInfo is owned by pkg/api/internal/types; re-exported here.
 type ChannelFloorInfo = types.ChannelFloorInfo
 
 var (
@@ -81,12 +80,12 @@ func (api *API) AddChannelPackageFloor(channelID, packageID string, floorReason 
 	return err
 }
 
-// isPackageBlacklistedForChannel forwards to api.queries.
+// isPackageBlacklistedForChannel checks if a package is blacklisted for a specific channel
 func (api *API) isPackageBlacklistedForChannel(packageID, channelID string) (bool, error) {
 	return api.queries.IsPackageBlacklistedForChannel(packageID, channelID)
 }
 
-// isPackageFloorForChannel forwards to api.queries.
+// isPackageFloorForChannel checks if a package is marked as a floor for a specific channel
 func (api *API) isPackageFloorForChannel(packageID, channelID string) (bool, error) {
 	return api.queries.IsPackageFloorForChannel(packageID, channelID)
 }
@@ -121,27 +120,27 @@ func (api *API) RemoveChannelPackageFloor(channelID, packageID string) error {
 	return nil
 }
 
-// GetChannelFloorPackages forwards to api.queries.
+// GetChannelFloorPackages returns all floor packages for a specific channel
 func (api *API) GetChannelFloorPackages(channelID string) ([]*Package, error) {
 	return api.queries.GetChannelFloorPackages(channelID)
 }
 
-// GetRequiredChannelFloors forwards to api.queries.
+// GetRequiredChannelFloors returns floor packages between instance and target versions for a channel
 func (api *API) GetRequiredChannelFloors(channel *Channel, instanceVersion string) ([]*Package, error) {
 	return api.queries.GetRequiredChannelFloors(channel, instanceVersion)
 }
 
-// GetChannelFloorPackagesCount forwards to api.queries.
+// GetChannelFloorPackagesCount returns the count of floor packages for a channel
 func (api *API) GetChannelFloorPackagesCount(channelID string) (int, error) {
 	return api.queries.GetChannelFloorPackagesCount(channelID)
 }
 
-// GetChannelFloorPackagesPaginated forwards to api.queries.
+// GetChannelFloorPackagesPaginated returns paginated floor packages for a channel
 func (api *API) GetChannelFloorPackagesPaginated(channelID string, page, perPage uint64) ([]*Package, error) {
 	return api.queries.GetChannelFloorPackagesPaginated(channelID, page, perPage)
 }
 
-// GetPackageFloorChannels forwards to api.queries.
+// GetPackageFloorChannels returns all channels where a package is marked as a floor
 func (api *API) GetPackageFloorChannels(packageID string) ([]ChannelFloorInfo, error) {
 	return api.queries.GetPackageFloorChannels(packageID)
 }

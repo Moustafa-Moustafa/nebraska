@@ -9,15 +9,16 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// GetActivityCount returns the count of activity rows that match the filters
-// in p. p.Page / p.PerPage are ignored. p.Start defaults to now-3d, p.End to
-// now if zero.
+// Gets the activity count using some ActivityQueryParams filters
+// Page and PerPage are ignored.
+// Start is nil, then it defaults -3 days.
+// End is nil, then it defaults to Now.
 func (q *Queries) GetActivityCount(teamID string, p types.ActivityQueryParams) (int, error) {
 	return q.GetCountQuery(q.activityQuery(teamID, p, true))
 }
 
-// GetActivity returns the activity rows that match the filters in p, ordered
-// most-recent first and paginated.
+// GetActivity returns a list of activity entries that match the specified
+// criteria in the query parameters.
 func (q *Queries) GetActivity(teamID string, p types.ActivityQueryParams) ([]*types.Activity, error) {
 	var activityEntries []*types.Activity
 	query, _, err := q.activityQuery(teamID, p, false).ToSQL()
@@ -43,6 +44,9 @@ func (q *Queries) GetActivity(teamID string, p types.ActivityQueryParams) ([]*ty
 	return activityEntries, nil
 }
 
+// activityQuery returns a SelectDataset prepared to return all activity
+// entries that match the criteria provided in ActivityQueryParams.
+// countSelect true returns a count without pagination (Page and PerPage are ignored)
 func (q *Queries) activityQuery(teamID string, p types.ActivityQueryParams, countSelect bool) *goqu.SelectDataset {
 	p.Page, p.PerPage = shared.ValidatePaginationParams(p.Page, p.PerPage)
 

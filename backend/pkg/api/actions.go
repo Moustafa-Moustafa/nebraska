@@ -6,7 +6,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// FlatcarAction is owned by pkg/api/internal/types; re-exported here.
 type FlatcarAction = types.FlatcarAction
 
 // AddFlatcarAction registers the provided Omaha Flatcar action.
@@ -37,8 +36,8 @@ func (api *API) AddFlatcarAction(action *FlatcarAction) (*FlatcarAction, error) 
 	return action, err
 }
 
-// GetFlatcarAction forwards to the embedded reads. The actual SQL lives in
-// pkg/api/dbreads/actions.go.
+// GetFlatcarAction returns the Flatcar action entry associated to the package id
+// provided.
 func (api *API) GetFlatcarAction(packageID string) (*FlatcarAction, error) {
 	return api.queries.GetFlatcarAction(packageID)
 }

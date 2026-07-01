@@ -233,7 +233,6 @@ func (api *API) triggerEventConsequences(instanceID, appID, groupID, lastUpdateV
 	return nil
 }
 
-// GetEvent forwards to api.queries; SQL in pkg/api/dbreads/events.go.
 func (api *API) GetEvent(instanceID string, appID string, timestamp time.Time) (null.String, error) {
 	return api.queries.GetEvent(instanceID, appID, timestamp)
 }

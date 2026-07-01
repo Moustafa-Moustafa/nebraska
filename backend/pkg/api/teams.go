@@ -6,15 +6,12 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// Team is owned by pkg/api/internal/types; re-exported here.
 type Team = types.Team
 
-// GetTeams forwards to api.queries; SQL in pkg/api/dbreads/teams.go.
 func (api *API) GetTeams() ([]*Team, error) {
 	return api.queries.GetTeams()
 }
 
-// GetTeam forwards to api.queries; SQL in pkg/api/dbreads/teams.go.
 func (api *API) GetTeam() (*Team, error) {
 	return api.queries.GetTeam()
 }

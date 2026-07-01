@@ -10,9 +10,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// Group, GroupDescriptor, VersionBreakdownEntry, VersionCountTimelineEntry,
-// StatusVersionCountTimelineEntry, VersionCountMap, InstancesStatusStats, and
-// UpdatesStats are owned by pkg/api/internal/types; re-exported here.
 type (
 	Group                           = types.Group
 	GroupDescriptor                 = types.GroupDescriptor
@@ -188,22 +185,24 @@ func (api *API) DeleteGroup(groupID string) error {
 	return nil
 }
 
-// GetGroup forwards to api.queries; SQL in pkg/api/dbreads/groups.go.
+// GetGroup returns the group identified by the id provided.
 func (api *API) GetGroup(groupID string) (*Group, error) {
 	return api.queries.GetGroup(groupID)
 }
 
-// GetGroupID forwards to api.queries; cache + SQL in pkg/api/dbreads/groups.go.
+// GetGroupID returns the ID of the first group identified by the track name and the channel architecture.
+// The track names should be unique in combination with the group's channel architecture but this is not
+// enforced on the DB level and the newest entry wins.
 func (api *API) GetGroupID(appID, trackName string, arch Arch) (string, error) {
 	return api.queries.GetGroupID(appID, trackName, arch)
 }
 
-// GetGroupsCount forwards to api.queries.
+// GetGroupsCount retuns the total number of groups in an app
 func (api *API) GetGroupsCount(appID string) (int, error) {
 	return api.queries.GetGroupsCount(appID)
 }
 
-// GetGroups forwards to api.queries.
+// GetGroups returns all groups that belong to the application provided.
 func (api *API) GetGroups(appID string, page, perPage uint64) ([]*Group, error) {
 	return api.queries.GetGroups(appID, page, perPage)
 }
@@ -220,9 +219,8 @@ func (api *API) validateChannel(channelID, appID string) error {
 	return nil
 }
 
-// getGroupUpdatesStats forwards to api.queries.GetGroupUpdatesStats. Kept
-// lowercase on *API so existing runtime writers in events.go and updates.go
-// compile unchanged.
+// getGroupUpdatesStats returns a set of statistics about the distribution of
+// updates and their status in the group provided.
 func (api *API) getGroupUpdatesStats(group *Group) (*UpdatesStats, error) {
 	return api.queries.GetGroupUpdatesStats(group)
 }
@@ -258,28 +256,39 @@ func (api *API) setGroupRolloutInProgress(groupID string, inProgress bool) error
 	return err
 }
 
-// groupsQuery moved to pkg/api/dbreads/groups.go (q *Queries).
-
-// GetGroupVersionBreakdown forwards to api.queries.
+// GetGroupVersionBreakdown returns a version breakdown of all instances running on a given group.
 func (api *API) GetGroupVersionBreakdown(groupID string) ([]*VersionBreakdownEntry, error) {
 	return api.queries.GetGroupVersionBreakdown(groupID)
 }
 
-// GetGroupInstancesStats forwards to api.queries.
+// getGroupInstancesStats returns a summary of the status of the
+// instances that belong to a given group.
 func (api *API) GetGroupInstancesStats(groupID, duration string) (*InstancesStatusStats, error) {
 	return api.queries.GetGroupInstancesStats(groupID, duration)
 }
 
-// duration helpers + isNightlyVersion + updateVersionTimeline moved to
-// pkg/api/dbreads/groups.go.
-
-// GetGroupVersionCountTimeline forwards to api.queries; TTL cache + 3-query
-// implementation lives in pkg/api/dbreads/groups.go.
+// This function computes instance version count form two different tables instance_application and instance_status_history.
+// There are three types of instances that can exist.
+// 1. Instances without any update history.
+// 2. Instances which got updated in the duration(ie 30d,7d etc).
+// 3. Instances that have updated but not in the duration.
+// Here 1,3 doesn't contribute to growth or decline of the graph, they are straight lines in the graph.
+// Based on this logic three queries are made concurrently and calculated to achieve the end result.
+//
+// Query 1 generates the time series using the `generate_series` postgres function and groups the
+// instances without any update history(ie instance_application without any matching instance_status_history entry)
+// based on version.
+//
+// Query 2 filters all instance_application with instance_status_history in the duration sorted desc by instance_id and created_ts
+// So we have entries of instances_status_history based on the created_ts the count is increased for the corresponding versions in
+// the corresponding spans programatically
+//
+// Query 3 filters all instance without any instance_status_history in the duration and takes the latest version for each instance and groups
+// them to give a base count for all the versions. These version count values are directly added to all spans.
 func (api *API) GetGroupVersionCountTimeline(groupID string, duration string) (map[time.Time](VersionCountMap), bool, error) {
 	return api.queries.GetGroupVersionCountTimeline(groupID, duration)
 }
 
-// GetGroupStatusCountTimeline forwards to api.queries.
 func (api *API) GetGroupStatusCountTimeline(groupID string, duration string) (map[time.Time](map[int](VersionCountMap)), error) {
 	return api.queries.GetGroupStatusCountTimeline(groupID, duration)
 }

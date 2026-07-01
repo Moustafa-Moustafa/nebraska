@@ -57,8 +57,6 @@ var (
 	ErrArchMismatch = errors.New("nebraska: mismatched arches")
 )
 
-// ErrInvalidArch is re-exported from arch.go (see types.ErrInvalidArch).
-
 const migrationsTable = "database_migrations"
 
 // API represents an api instance used to interact with Nebraska entities.
@@ -67,9 +65,6 @@ type API struct {
 	dbDriver string
 	dbURL    string
 
-	// queries is the shared read surface. Owned by *API and shared with
-	// admin.Service / runtime.Service in later phases. Read methods on *API
-	// (GetApp, GetGroup, ...) forward to this field.
 	queries *dbreads.Queries
 
 	// disableUpdatesOnFailedRollout defines wether to disable updates
@@ -140,8 +135,6 @@ func New(options ...func(*API) error) (*API, error) {
 		}
 	}
 
-	// Wire the shared reads. Constructed last so any Option* that swaps
-	// api.db (e.g. test fixtures) is already applied.
 	api.queries = dbreads.New(api.db, api.maxFloorsPerResponse)
 
 	return api, nil

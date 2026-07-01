@@ -7,9 +7,6 @@ import (
 	"gopkg.in/guregu/null.v4"
 )
 
-// GetEvent returns the most recent event row's error_code (if any) for the
-// given instance/app at or before the given timestamp. Used when an instance
-// reports a failed update and the handler needs the last error context.
 func (q *Queries) GetEvent(instanceID string, appID string, timestamp time.Time) (null.String, error) {
 	query, _, err := goqu.From("event").
 		Select("error_code").

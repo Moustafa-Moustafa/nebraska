@@ -28,6 +28,7 @@ var (
 	cachedAppsIDsLock sync.RWMutex
 )
 
+// GetApp returns the application identified by the id provided.
 func (q *Queries) GetApp(appID string) (*types.Application, error) {
 	var app types.Application
 	query, _, err := goqu.From("application").

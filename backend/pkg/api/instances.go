@@ -11,10 +11,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// Instance, InstancesWithTotal, InstanceApplication, InstanceStatusHistoryEntry,
-// InstancesQueryParams, InstanceStats, the InstanceStatus* constants, and the
-// NewInstanceApplication constructor are owned by pkg/api/internal/types;
-// re-exported here.
 type (
 	Instance                   = types.Instance
 	InstancesWithTotal         = types.InstancesWithTotal
@@ -35,8 +31,6 @@ const (
 	InstanceStatusOnHold        = types.InstanceStatusOnHold
 )
 
-// NewInstanceApplication is re-exported (functions cannot be aliased like
-// types, so the wrapper forwards to types.NewInstanceApplication).
 var NewInstanceApplication = types.NewInstanceApplication
 
 // RegisterInstance registers an instance into Nebraska.
@@ -166,22 +160,22 @@ func (api *API) RegisterInstance(inst Instance, instApp InstanceApplication) (*I
 	return api.GetInstance(inst.ID, appID)
 }
 
-// GetInstance forwards to dbreads.Queries.GetInstance.
+// GetInstance returns the instance identified by the id provided.
 func (api *API) GetInstance(instanceID, appID string) (*Instance, error) {
 	return api.queries.GetInstance(instanceID, appID)
 }
 
-// GetInstanceStatusHistory forwards to dbreads.Queries.GetInstanceStatusHistory.
+// GetInstanceStatusHistory returns the status history of an instance in the
+// context of the application/group provided.
 func (api *API) GetInstanceStatusHistory(instanceID, appID, groupID string, limit uint64) ([]*InstanceStatusHistoryEntry, error) {
 	return api.queries.GetInstanceStatusHistory(instanceID, appID, groupID, limit)
 }
 
-// GetInstances forwards to dbreads.Queries.GetInstances.
+// GetInstances returns all instances that match with the provided criteria.
 func (api *API) GetInstances(p InstancesQueryParams, duration string) (InstancesWithTotal, error) {
 	return api.queries.GetInstances(p, duration)
 }
 
-// GetInstancesCount forwards to dbreads.Queries.GetInstancesCount.
 func (api *API) GetInstancesCount(p InstancesQueryParams, duration string) (int, error) {
 	return api.queries.GetInstancesCount(p, duration)
 }
@@ -302,17 +296,19 @@ func (api *API) updateInstanceObjStatus(instance *Instance, newStatus int) error
 	return api.updateInstanceData(instance, insertData)
 }
 
-// GetDefaultInterval forwards to dbreads.Queries.GetDefaultInterval.
+// GetDefaultInterval returns the default interval used for instance stats queries.
 func (api *API) GetDefaultInterval() time.Duration {
 	return api.queries.GetDefaultInterval()
 }
 
-// GetInstanceStats forwards to dbreads.Queries.GetInstanceStats.
+// GetInstanceStats returns an InstanceStats table with all instances that have
+// been previously been checked in.
 func (api *API) GetInstanceStats() ([]InstanceStats, error) {
 	return api.queries.GetInstanceStats()
 }
 
-// GetInstanceStatsByTimestamp forwards to dbreads.Queries.GetInstanceStatsByTimestamp.
+// GetInstanceStatsByTimestamp returns an InstanceStats array of instances matching a
+// given timestamp value, ordered by version.
 func (api *API) GetInstanceStatsByTimestamp(t time.Time) ([]InstanceStats, error) {
 	return api.queries.GetInstanceStatsByTimestamp(t)
 }

@@ -6,11 +6,11 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 )
 
-// isValidSemver forwards to shared.IsValidSemver.
+// isValidSemver checks if the provided string represents a valid semver
+// version.
 var isValidSemver = shared.IsValidSemver
 
-// isTimezoneValid checks if the provided timezone is valid. Stays local:
-// only admin-side group writers use it, no sub-package needs it.
+// isTimezoneValid checks if the provided timezone is valid.
 func isTimezoneValid(tz string) bool {
 	if tz == "" {
 		return false

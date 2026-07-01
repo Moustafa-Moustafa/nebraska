@@ -14,8 +14,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// defaultStatsInterval is the default window used by GetDefaultInterval and
-// the instance-stats reads.
 const defaultStatsInterval time.Duration = 24 * time.Hour
 
 // --- sort helpers --------------------------------------------------------
@@ -99,8 +97,7 @@ func prepareInstanceAppQuery() *goqu.SelectDataset {
 
 // --- reads ---------------------------------------------------------------
 
-// GetInstance returns the instance identified by the id provided, hydrated
-// with the matching instance_application row.
+// GetInstance returns the instance identified by the id provided.
 func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error) {
 	var instance types.Instance
 	query, _, err := goqu.From("instance").
@@ -143,8 +140,7 @@ func (q *Queries) getInstanceApp(appID, instanceID string, duration shared.Postg
 }
 
 // GetInstanceStatusHistory returns the status history of an instance in the
-// context of the application/group provided. Hydrates ErrorCode for error
-// statuses via GetEvent.
+// context of the application/group provided.
 func (q *Queries) GetInstanceStatusHistory(instanceID, appID, groupID string, limit uint64) ([]*types.InstanceStatusHistoryEntry, error) {
 	var instanceStatusHistory []*types.InstanceStatusHistoryEntry
 	query, _, err := q.instanceStatusHistoryQuery(instanceID, appID, groupID, limit).ToSQL()
@@ -176,7 +172,7 @@ func (q *Queries) GetInstanceStatusHistory(instanceID, appID, groupID string, li
 	return instanceStatusHistory, nil
 }
 
-// GetInstances returns all instances matching the criteria, paginated.
+// GetInstances returns all instances that match with the provided criteria.
 func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (types.InstancesWithTotal, error) {
 	var instances []*types.Instance
 	var err error
@@ -241,7 +237,6 @@ func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (t
 	return result, nil
 }
 
-// GetInstancesCount returns the count of instances matching the criteria.
 func (q *Queries) GetInstancesCount(p types.InstancesQueryParams, duration string) (int, error) {
 	var err error
 
@@ -300,6 +295,8 @@ func (q *Queries) getFilterInstancesQuery(selectPart exp.LiteralExpression, p ty
 	return query
 }
 
+// instancesQuery returns a SelectDataset prepared to return all instances
+// that match the criteria provided in InstancesQueryParams.
 func (q *Queries) instancesQuery(p types.InstancesQueryParams, duration shared.PostgresDuration) *goqu.SelectDataset {
 	instancesSubquery := q.getFilterInstancesQuery(goqu.L("instance_id"), p, duration)
 
@@ -307,6 +304,8 @@ func (q *Queries) instancesQuery(p types.InstancesQueryParams, duration shared.P
 		Where(goqu.L("id IN ?", instancesSubquery))
 }
 
+// instanceStatusHistoryQuery returns a SelectDataset prepared to return the
+// status history of a given instance in the context of an application/group.
 func (q *Queries) instanceStatusHistoryQuery(instanceID, appID, groupID string, limit uint64) *goqu.SelectDataset {
 	if limit == 0 {
 		limit = 20
@@ -407,7 +406,8 @@ func (q *Queries) InstanceStatsQuery(t *time.Time, duration *time.Duration) *goq
 	return query
 }
 
-// GetInstanceStats returns the contents of the instance_stats table.
+// GetInstanceStats returns an InstanceStats table with all instances that have
+// been previously been checked in.
 func (q *Queries) GetInstanceStats() ([]types.InstanceStats, error) {
 	query, _, err := goqu.From("instance_stats").
 		Order(goqu.C("timestamp").Asc()).ToSQL()
@@ -434,7 +434,7 @@ func (q *Queries) GetInstanceStats() ([]types.InstanceStats, error) {
 	return instances, nil
 }
 
-// GetInstanceStatsByTimestamp returns the instance_stats rows matching the
+// GetInstanceStatsByTimestamp returns an InstanceStats array of instances matching a
 // given timestamp value, ordered by version.
 func (q *Queries) GetInstanceStatsByTimestamp(t time.Time) ([]types.InstanceStats, error) {
 	timestamp := goqu.L("timestamp ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")))

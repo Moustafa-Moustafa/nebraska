@@ -6,7 +6,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// GetTeams returns every team known to Nebraska, ordered by name.
 func (q *Queries) GetTeams() ([]*types.Team, error) {
 	var teams []*types.Team
 	query, _, err := goqu.From("team").
@@ -35,10 +34,6 @@ func (q *Queries) GetTeams() ([]*types.Team, error) {
 	return teams, nil
 }
 
-// GetTeam returns the first team row. Nebraska currently exposes a single
-// team to callers; this helper is the single source of that team's id.
-// GetTeam returns the first team row. Nebraska currently exposes a single
-// team to callers; this helper is the single source of that team's id.
 func (q *Queries) GetTeam() (*types.Team, error) {
 	var team = &types.Team{}
 	query, _, err := goqu.From("team").

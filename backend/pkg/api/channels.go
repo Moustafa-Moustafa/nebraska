@@ -18,7 +18,6 @@ var (
 	ErrBlacklistedChannel = errors.New("nebraska: blacklisted channel")
 )
 
-// Channel is owned by pkg/api/internal/types; re-exported here.
 type Channel = types.Channel
 
 // AddChannel registers the provided channel.
@@ -120,19 +119,17 @@ func (api *API) DeleteChannel(channelID string) error {
 	return nil
 }
 
-// --- Read forwarders --- SQL lives in pkg/api/dbreads/channels.go.
-
-// GetChannel forwards to api.queries.
+// GetChannel returns the channel identified by the id provided.
 func (api *API) GetChannel(channelID string) (*Channel, error) {
 	return api.queries.GetChannel(channelID)
 }
 
-// GetChannelsCount forwards to api.queries.
+// GetChannelsCount retuns the total number of channels in an app
 func (api *API) GetChannelsCount(appID string) (int, error) {
 	return api.queries.GetChannelsCount(appID)
 }
 
-// GetChannels forwards to api.queries.
+// GetChannels returns all channels associated to the application provided.
 func (api *API) GetChannels(appID string, page, perPage uint64) ([]*Channel, error) {
 	return api.queries.GetChannels(appID, page, perPage)
 }

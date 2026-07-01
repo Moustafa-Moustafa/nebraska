@@ -6,8 +6,8 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// GetFlatcarAction returns the Flatcar action entry associated to the package
-// id provided.
+// GetFlatcarAction returns the Flatcar action entry associated to the package id
+// provided.
 func (q *Queries) GetFlatcarAction(packageID string) (*types.FlatcarAction, error) {
 	action := types.FlatcarAction{}
 	query, _, err := goqu.From("flatcar_action").

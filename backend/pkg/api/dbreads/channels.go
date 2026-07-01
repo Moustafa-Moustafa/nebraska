@@ -41,7 +41,7 @@ func (q *Queries) GetChannelsCount(appID string) (int, error) {
 	return q.GetCountQuery(query)
 }
 
-// GetChannels returns a paginated list of channels for the application.
+// GetChannels returns all channels associated to the application provided.
 func (q *Queries) GetChannels(appID string, page, perPage uint64) ([]*types.Channel, error) {
 	page, perPage = shared.ValidatePaginationParams(page, perPage)
 	limit, offset := shared.SQLPaginate(page, perPage)

@@ -20,7 +20,6 @@ const (
 	PkgTypeOther
 )
 
-// File represents an extra file attached to a package.
 type File struct {
 	ID        int64       `db:"id" json:"id"`
 	PackageID string      `db:"package_id" json:"package_id"`

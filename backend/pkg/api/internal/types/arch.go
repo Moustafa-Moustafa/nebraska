@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// ErrInvalidArch indicates the provided architecture is not valid/supported.
+// ErrInvalidArch indicates that the provided architecture is not valid/supported
 var ErrInvalidArch = errors.New("nebraska: invalid/unsupported arch")
 
 type Arch uint

@@ -22,28 +22,28 @@ const (
 	activityError
 )
 
-// Activity and ActivityQueryParams are owned by pkg/api/internal/types;
-// re-exported here.
 type (
 	Activity            = types.Activity
 	ActivityQueryParams = types.ActivityQueryParams
 )
 
-// --- Read forwarders --- SQL lives in pkg/api/dbreads/activity.go.
-
-// GetActivityCount forwards to api.queries.
+// Gets the activity count using some ActivityQueryParams filters
+// Page and PerPage are ignored.
+// Start is nil, then it defaults -3 days.
+// End is nil, then it defaults to Now.
 func (api *API) GetActivityCount(teamID string, p ActivityQueryParams) (int, error) {
 	return api.queries.GetActivityCount(teamID, p)
 }
 
-// GetActivity forwards to api.queries.
+// GetActivity returns a list of activity entries that match the specified
+// criteria in the query parameters.
 func (api *API) GetActivity(teamID string, p ActivityQueryParams) ([]*Activity, error) {
 	return api.queries.GetActivity(teamID, p)
 }
 
-// hasRecentRuntimeActivity forwards to api.queries.HasRecentRuntimeActivity.
-// Kept on *API (lowercase) so pkg/api tests and the runtime writers in
-// updates.go continue to call it without changes.
+// hasRecentRuntimeActivity reports whether there is matching runtime activity
+// entry in the last 24h. Only runtime classes (1-5) are meaningful here.
+// Admin events live in admin_activity and are not returned here.
 func (api *API) hasRecentRuntimeActivity(class int, p ActivityQueryParams) bool {
 	return api.queries.HasRecentRuntimeActivity(class, p)
 }

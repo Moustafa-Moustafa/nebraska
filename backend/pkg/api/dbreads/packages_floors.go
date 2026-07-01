@@ -11,6 +11,7 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
+// GetChannelFloorPackages returns all floor packages for a specific channel
 func (q *Queries) GetChannelFloorPackages(channelID string) ([]*types.Package, error) {
 	// No blacklist check needed for floors
 	semverExpr, err := semverToIntArray("p.version")

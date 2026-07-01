@@ -19,7 +19,6 @@ var (
 	ErrUpdatingPassword = errors.New("nebraska: error updating password")
 )
 
-// User is owned by pkg/api/internal/types; re-exported here.
 type User = types.User
 
 // AddTeam registers a team.
@@ -39,12 +38,11 @@ func (api *API) AddUser(user *User) (*User, error) {
 	return user, nil
 }
 
-// GetUser forwards to api.queries; SQL in pkg/api/dbreads/users.go.
+// GetUser returns the user identified by the username provided.
 func (api *API) GetUser(username string) (*User, error) {
 	return api.queries.GetUser(username)
 }
 
-// GetUsersInTeam forwards to api.queries; SQL in pkg/api/dbreads/users.go.
 func (api *API) GetUsersInTeam(teamID string) ([]*User, error) {
 	return api.queries.GetUsersInTeam(teamID)
 }
@@ -77,7 +75,8 @@ func (api *API) UpdateUserPassword(username, newPassword string) error {
 	return nil
 }
 
-// GenerateUserSecret forwards to api.queries; impl in pkg/api/dbreads/users.go.
+// GenerateUserSecret generates a md5 hash from the username and password
+// provided (username:realm:password).
 func (api *API) GenerateUserSecret(username, password string) (string, error) {
 	return api.queries.GenerateUserSecret(username, password)
 }
