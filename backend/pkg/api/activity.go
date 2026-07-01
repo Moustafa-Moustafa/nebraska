@@ -41,8 +41,9 @@ func (api *API) GetActivity(teamID string, p ActivityQueryParams) ([]*Activity, 
 	return api.queries.GetActivity(teamID, p)
 }
 
-// A shim to api.queries.HasRecentRuntimeActivity to avoid updating pkg/api
-//  tests and the runtime writers in this iteration.
+// hasRecentRuntimeActivity forwards to api.queries.HasRecentRuntimeActivity.
+// Kept on *API (lowercase) so pkg/api tests and the runtime writers in
+// updates.go continue to call it without changes.
 func (api *API) hasRecentRuntimeActivity(class int, p ActivityQueryParams) bool {
 	return api.queries.HasRecentRuntimeActivity(class, p)
 }

@@ -26,8 +26,6 @@ ORDER BY app_name
 `, shared.IgnoreFakeInstanceCondition("e.instance_id"))
 )
 
-// GetAppInstancesPerChannelMetrics returns the per-(app, version, channel)
-// instance count metric series used by /metrics.
 func (q *Queries) GetAppInstancesPerChannelMetrics() ([]types.AppInstancesPerChannelMetric, error) {
 	var metrics []types.AppInstancesPerChannelMetric
 	rows, err := q.db.Queryx(appInstancesPerChannelMetricSQL)
@@ -37,7 +35,8 @@ func (q *Queries) GetAppInstancesPerChannelMetrics() ([]types.AppInstancesPerCha
 	defer rows.Close()
 	for rows.Next() {
 		var metric types.AppInstancesPerChannelMetric
-		if err := rows.StructScan(&metric); err != nil {
+		err := rows.StructScan(&metric)
+		if err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, metric)
@@ -48,8 +47,6 @@ func (q *Queries) GetAppInstancesPerChannelMetrics() ([]types.AppInstancesPerCha
 	return metrics, nil
 }
 
-// GetFailedUpdatesMetrics returns the per-app count of failed update events
-// used by /metrics.
 func (q *Queries) GetFailedUpdatesMetrics() ([]types.FailedUpdatesMetric, error) {
 	var metrics []types.FailedUpdatesMetric
 	rows, err := q.db.Queryx(failedUpdatesSQL)
@@ -59,7 +56,8 @@ func (q *Queries) GetFailedUpdatesMetrics() ([]types.FailedUpdatesMetric, error)
 	defer rows.Close()
 	for rows.Next() {
 		var metric types.FailedUpdatesMetric
-		if err := rows.StructScan(&metric); err != nil {
+		err := rows.StructScan(&metric)
+		if err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, metric)
@@ -70,8 +68,6 @@ func (q *Queries) GetFailedUpdatesMetrics() ([]types.FailedUpdatesMetric, error)
 	return metrics, nil
 }
 
-// DbStats returns the underlying *sqlx.DB's pool statistics for the
-// /metrics endpoint.
 func (q *Queries) DbStats() sql.DBStats {
 	return q.db.Stats()
 }

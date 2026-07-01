@@ -11,13 +11,13 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// GetChannelFloorPackages returns all floor packages for a specific channel,
-// ordered by version ascending.
 func (q *Queries) GetChannelFloorPackages(channelID string) ([]*types.Package, error) {
+	// No blacklist check needed for floors
 	semverExpr, err := semverToIntArray("p.version")
 	if err != nil {
 		return nil, err
 	}
+
 	query, _, err := goqu.From(goqu.L(`
 		package p
 		JOIN channel_package_floors cpf ON p.id = cpf.package_id
@@ -30,15 +30,15 @@ func (q *Queries) GetChannelFloorPackages(channelID string) ([]*types.Package, e
 		Where(goqu.C("channel_id").Table("cpf").Eq(channelID)).
 		Order(goqu.L(semverExpr).Asc()).
 		ToSQL()
+
 	if err != nil {
 		return nil, err
 	}
+
 	return q.getPackagesFromQuery(query)
 }
 
-// GetRequiredChannelFloors returns floor packages between the instance and
-// target versions for the given channel. Capped at MaxFloorsPerResponse to
-// avoid oversized syncer responses.
+// GetRequiredChannelFloors returns floor packages between instance and target versions for a channel
 func (q *Queries) GetRequiredChannelFloors(channel *types.Channel, instanceVersion string) ([]*types.Package, error) {
 	if channel == nil || channel.Package == nil {
 		return nil, ErrNoPackageFound
@@ -46,24 +46,30 @@ func (q *Queries) GetRequiredChannelFloors(channel *types.Channel, instanceVersi
 	if instanceVersion == "" {
 		return nil, fmt.Errorf("instance version cannot be empty")
 	}
+
 	targetVersion := channel.Package.Version
-	maxFloors := q.maxFloorsPerResponse
-	if maxFloors <= 0 {
-		maxFloors = DefaultMaxFloorsPerResponse
+
+	maxFloorsPerResponse := DefaultMaxFloorsPerResponse
+	if q.maxFloorsPerResponse > 0 {
+		maxFloorsPerResponse = q.maxFloorsPerResponse
 	}
 
+	// No blacklist check needed for floors
 	gtExpr, err := versionCompareExpr("p.version", ">", instanceVersion)
 	if err != nil {
 		return nil, err
 	}
+
 	lteExpr, err := versionCompareExpr("p.version", "<=", targetVersion)
 	if err != nil {
 		return nil, err
 	}
+
 	semverExpr, err := semverToIntArray("p.version")
 	if err != nil {
 		return nil, err
 	}
+
 	query, _, err := goqu.From(goqu.L(`
 		package p
 		JOIN channel_package_floors cpf ON p.id = cpf.package_id
@@ -79,15 +85,17 @@ func (q *Queries) GetRequiredChannelFloors(channel *types.Channel, instanceVersi
 			lteExpr,
 		)).
 		Order(goqu.L(semverExpr).Asc()).
-		Limit(uint(maxFloors)).
+		Limit(uint(maxFloorsPerResponse)).
 		ToSQL()
+
 	if err != nil {
 		return nil, err
 	}
+
 	return q.getPackagesFromQuery(query)
 }
 
-// GetChannelFloorPackagesCount returns the count of floor packages for a channel.
+// GetChannelFloorPackagesCount returns the count of floor packages for a channel
 func (q *Queries) GetChannelFloorPackagesCount(channelID string) (int, error) {
 	query := goqu.From("channel_package_floors").
 		Where(goqu.C("channel_id").Eq(channelID)).
@@ -95,14 +103,17 @@ func (q *Queries) GetChannelFloorPackagesCount(channelID string) (int, error) {
 	return q.GetCountQuery(query)
 }
 
-// GetChannelFloorPackagesPaginated returns paginated floor packages for a channel.
+// GetChannelFloorPackagesPaginated returns paginated floor packages for a channel
 func (q *Queries) GetChannelFloorPackagesPaginated(channelID string, page, perPage uint64) ([]*types.Package, error) {
 	page, perPage = shared.ValidatePaginationParams(page, perPage)
 	limit, offset := shared.SQLPaginate(page, perPage)
+
+	// No blacklist check needed for floors
 	semverExpr, err := semverToIntArray("p.version")
 	if err != nil {
 		return nil, err
 	}
+
 	query, _, err := goqu.From(goqu.L(`
 		package p
 		JOIN channel_package_floors cpf ON p.id = cpf.package_id
@@ -117,15 +128,17 @@ func (q *Queries) GetChannelFloorPackagesPaginated(channelID string, page, perPa
 		Limit(limit).
 		Offset(offset).
 		ToSQL()
+
 	if err != nil {
 		return nil, err
 	}
+
 	return q.getPackagesFromQuery(query)
 }
 
-// GetPackageFloorChannels returns every channel where the given package is
-// marked as a floor, with the channel's current target package hydrated.
+// GetPackageFloorChannels returns all channels where a package is marked as a floor
 func (q *Queries) GetPackageFloorChannels(packageID string) ([]types.ChannelFloorInfo, error) {
+	// Use a temporary struct that embeds Channel and adds floor_reason
 	type channelWithFloor struct {
 		types.Channel
 		FloorReason null.String `db:"floor_reason"`
@@ -148,6 +161,7 @@ func (q *Queries) GetPackageFloorChannels(packageID string) ([]types.ChannelFloo
 		Where(goqu.C("package_id").Table("cpf").Eq(packageID)).
 		Order(goqu.C("name").Table("c").Asc()).
 		ToSQL()
+
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +178,8 @@ func (q *Queries) GetPackageFloorChannels(packageID string) ([]types.ChannelFloo
 		if err := rows.StructScan(&chWithFloor); err != nil {
 			return nil, err
 		}
+
+		// Load the package that the channel points to (if any) - same as getChannelsFromQuery
 		if chWithFloor.PackageID.Valid {
 			pkg, err := q.getPackage(chWithFloor.PackageID)
 			switch err {
@@ -175,21 +191,21 @@ func (q *Queries) GetPackageFloorChannels(packageID string) ([]types.ChannelFloo
 				return nil, err
 			}
 		}
+
 		result = append(result, types.ChannelFloorInfo{
 			Channel:     &chWithFloor.Channel,
 			FloorReason: chWithFloor.FloorReason,
 		})
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
 	return result, nil
 }
 
-// IsPackageBlacklistedForChannel reports whether the given package is in
-// the channel's blacklist. Used internally by floor writers (and exported
-// here so admin writers in a later phase can reach it across the package
-// boundary).
+// isPackageBlacklistedForChannel checks if a package is blacklisted for a specific channel
 func (q *Queries) IsPackageBlacklistedForChannel(packageID, channelID string) (bool, error) {
 	query, _, err := goqu.From("package_channel_blacklist").
 		Select(goqu.COUNT("*")).
@@ -198,18 +214,21 @@ func (q *Queries) IsPackageBlacklistedForChannel(packageID, channelID string) (b
 			goqu.C("package_id").Eq(packageID),
 		)).
 		ToSQL()
+
 	if err != nil {
 		return false, err
 	}
+
 	var count int
-	if err := q.db.QueryRow(query).Scan(&count); err != nil {
+	err = q.db.QueryRow(query).Scan(&count)
+	if err != nil {
 		return false, err
 	}
+
 	return count > 0, nil
 }
 
-// IsPackageFloorForChannel reports whether the given package is currently a
-// floor for the channel.
+// isPackageFloorForChannel checks if a package is marked as a floor for a specific channel
 func (q *Queries) IsPackageFloorForChannel(packageID, channelID string) (bool, error) {
 	query, _, err := goqu.From("channel_package_floors").
 		Select(goqu.COUNT("*")).
@@ -218,12 +237,16 @@ func (q *Queries) IsPackageFloorForChannel(packageID, channelID string) (bool, e
 			goqu.C("package_id").Eq(packageID),
 		)).
 		ToSQL()
+
 	if err != nil {
 		return false, err
 	}
+
 	var count int
-	if err := q.db.QueryRow(query).Scan(&count); err != nil {
+	err = q.db.QueryRow(query).Scan(&count)
+	if err != nil {
 		return false, err
 	}
+
 	return count > 0, nil
 }

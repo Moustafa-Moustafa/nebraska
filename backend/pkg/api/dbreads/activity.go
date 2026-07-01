@@ -31,7 +31,8 @@ func (q *Queries) GetActivity(teamID string, p types.ActivityQueryParams) ([]*ty
 	defer rows.Close()
 	for rows.Next() {
 		activityEntry := &types.Activity{}
-		if err := rows.StructScan(activityEntry); err != nil {
+		err := rows.StructScan(activityEntry)
+		if err != nil {
 			return nil, err
 		}
 		activityEntries = append(activityEntries, activityEntry)
@@ -42,9 +43,6 @@ func (q *Queries) GetActivity(teamID string, p types.ActivityQueryParams) ([]*ty
 	return activityEntries, nil
 }
 
-// activityQuery returns a SelectDataset prepared to return all activity rows
-// matching p. When countSelect is true it returns a COUNT(*) query without
-// pagination (p.Page / p.PerPage are ignored).
 func (q *Queries) activityQuery(teamID string, p types.ActivityQueryParams, countSelect bool) *goqu.SelectDataset {
 	p.Page, p.PerPage = shared.ValidatePaginationParams(p.Page, p.PerPage)
 
@@ -59,7 +57,6 @@ func (q *Queries) activityQuery(teamID string, p types.ActivityQueryParams, coun
 	} else {
 		end = time.Now().UTC()
 	}
-
 	query := goqu.From(goqu.L(`
 		all_activity AS a 
 		INNER JOIN application AS app ON (a.application_id = app.id)
@@ -73,44 +70,46 @@ func (q *Queries) activityQuery(teamID string, p types.ActivityQueryParams, coun
 		query = query.Select(
 			"a.id", "a.application_id", "a.group_id", "a.created_ts", "a.class",
 			"a.severity", "a.version", "a.instance_id",
-			goqu.I("app.name").As("application_name"),
-			goqu.I("g.name").As("group_name"),
-			goqu.I("c.name").As("channel_name"),
-		)
+			goqu.I("app.name").As("application_name"), goqu.I("g.name").
+				As("group_name"), goqu.I("c.name").As("channel_name"))
 	}
-	query = query.Where(
-		goqu.I("app.team_id").Eq(teamID),
-		goqu.And(
-			goqu.I("a.created_ts").Gte(start),
-			goqu.I("a.created_ts").Lt(end),
-		),
-	)
+	query = query.Where(goqu.I("app.team_id").
+		Eq(teamID), goqu.And(goqu.I("a.created_ts").
+		Gte(start), goqu.I("a.created_ts").
+		Lt(end)))
 
 	if p.AppID != "" {
 		query = query.Where(goqu.I("app.id").Eq(p.AppID))
 	}
+
 	if p.GroupID != "" {
 		query = query.Where(goqu.I("g.id").Eq(p.GroupID))
 	}
+
 	if p.ChannelID != "" {
 		query = query.Where(goqu.I("c.id").Eq(p.ChannelID))
 	}
+
 	if p.InstanceID != "" {
 		query = query.Where(goqu.I("a.instance_id").Eq(p.InstanceID))
 	} else {
 		query = query.Where(goqu.L(shared.IgnoreFakeInstanceCondition("a.instance_id")))
 	}
+
 	if p.Version != "" {
 		query = query.Where(goqu.I("a.version").Eq(p.Version))
 	}
+
 	if p.Severity != 0 {
 		query = query.Where(goqu.I("a.severity").Eq(p.Severity))
 	}
 
 	if !countSelect {
 		limit, offset := shared.SQLPaginate(p.Page, p.PerPage)
-		query = query.Limit(limit).Offset(offset).Order(goqu.I("a.created_ts").Desc())
+		query = query.Limit(limit).
+			Offset(offset).Order(goqu.I("a.created_ts").Desc())
 	}
+
 	return query
 }
 
@@ -128,20 +127,25 @@ func (q *Queries) HasRecentRuntimeActivity(class int, p types.ActivityQueryParam
 	if p.Severity != 0 {
 		query = query.Where(goqu.C("severity").Eq(p.Severity))
 	}
+
 	if p.Version != "" {
 		query = query.Where(goqu.C("version").Eq(p.Version))
 	}
+
 	if p.GroupID != "" {
 		query = query.Where(goqu.C("group_id").Eq(p.GroupID))
 	}
+
 	if p.AppID != "" {
 		query = query.Where(goqu.I("application_id").Eq(p.AppID))
 	}
+
 	if p.InstanceID != "" {
 		query = query.Where(goqu.C("instance_id").Eq(p.InstanceID))
 	} else {
 		query = query.Where(goqu.L(shared.IgnoreFakeInstanceCondition("instance_id")))
 	}
+
 	query = query.Limit(1)
 
 	sql, _, err := query.ToSQL()

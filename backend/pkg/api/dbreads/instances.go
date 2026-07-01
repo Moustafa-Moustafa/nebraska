@@ -105,7 +105,8 @@ func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error)
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&instance); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&instance)
+	if err != nil {
 		return nil, err
 	}
 	/* passing "" to sortFilter while invoking getInstanceApp signifies we are not interested
@@ -129,7 +130,8 @@ func (q *Queries) getInstanceApp(appID, instanceID string, duration shared.Postg
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&instanceApp); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&instanceApp)
+	if err != nil {
 		return nil, err
 	}
 	return &instanceApp, nil
@@ -151,7 +153,8 @@ func (q *Queries) GetInstanceStatusHistory(instanceID, appID, groupID string, li
 	defer rows.Close()
 	for rows.Next() {
 		var instanceStatusHistoryEntity types.InstanceStatusHistoryEntry
-		if err := rows.StructScan(&instanceStatusHistoryEntity); err != nil {
+		err = rows.StructScan(&instanceStatusHistoryEntity)
+		if err != nil {
 			return nil, err
 		}
 		if instanceStatusHistoryEntity.Status == types.InstanceStatusError {
@@ -183,14 +186,14 @@ func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (t
 
 	limit, offset := shared.SQLPaginate(p.Page, p.PerPage)
 	sortFilter := sanitizeSortFilterParams(p.SortFilter)
-	order := sortOrderFromString(p.SortOrder)
+	sortOrder := sortOrderFromString(p.SortOrder)
 	instancesQuery := q.instancesQuery(p, dbDuration)
 	instancesQuery = instancesQuery.Select("id", "ip", "created_ts", goqu.Case().
 		When(goqu.C("alias").Neq(""), goqu.C("alias")).Else(goqu.C("id")).As("alias"))
 
 	instanceAppQuery := prepareInstanceAppQuery()
 	finalQuery := prepareGetInstancesQuery(instancesQuery, instanceAppQuery)
-	switch order {
+	switch sortOrder {
 	case sortOrderAsc:
 		finalQuery = finalQuery.Order(goqu.I(sortFilter).Asc().NullsLast())
 	case sortOrderDesc:
@@ -212,10 +215,11 @@ func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (t
 	defer rows.Close()
 	for rows.Next() {
 		var instance types.Instance
-		if err := rows.Scan(&instance.ID, &instance.IP, &instance.CreatedTs, &instance.Alias,
+		err = rows.Scan(&instance.ID, &instance.IP, &instance.CreatedTs, &instance.Alias,
 			&instance.Application.Version, &instance.Application.Status, &instance.Application.LastCheckForUpdates,
 			&instance.Application.LastUpdateVersion, &instance.Application.UpdateInProgress,
-			&instance.Application.ApplicationID, &instance.Application.GroupID, &instance.Application.InstanceID); err != nil {
+			&instance.Application.ApplicationID, &instance.Application.GroupID, &instance.Application.InstanceID)
+		if err != nil {
 			return types.InstancesWithTotal{}, err
 		}
 		instances = append(instances, &instance)
@@ -388,19 +392,23 @@ func (q *Queries) GetInstanceStats() ([]types.InstanceStats, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	rows, err := q.db.Queryx(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	var instances []types.InstanceStats
 	for rows.Next() {
 		var instance types.InstanceStats
-		if err := rows.StructScan(&instance); err != nil {
+		err = rows.StructScan(&instance)
+		if err != nil {
 			return nil, err
 		}
 		instances = append(instances, instance)
 	}
+
 	return instances, nil
 }
 
@@ -408,24 +416,29 @@ func (q *Queries) GetInstanceStats() ([]types.InstanceStats, error) {
 // given timestamp value, ordered by version.
 func (q *Queries) GetInstanceStatsByTimestamp(t time.Time) ([]types.InstanceStats, error) {
 	timestamp := goqu.L("timestamp ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")))
+
 	query, _, err := goqu.From("instance_stats").
 		Where(goqu.C("timestamp").Eq(timestamp)).
 		Order(goqu.C("version").Asc()).ToSQL()
 	if err != nil {
 		return nil, err
 	}
+
 	rows, err := q.db.Queryx(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	var instances []types.InstanceStats
 	for rows.Next() {
 		var instance types.InstanceStats
-		if err := rows.StructScan(&instance); err != nil {
+		err = rows.StructScan(&instance)
+		if err != nil {
 			return nil, err
 		}
 		instances = append(instances, instance)
 	}
+
 	return instances, nil
 }

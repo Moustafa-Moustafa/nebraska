@@ -67,7 +67,8 @@ func (q *Queries) GetPackageByVersionAndArch(appID, version string, arch types.A
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&pkg); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&pkg)
+	if err != nil {
 		return nil, err
 	}
 	flatcarAction, err := q.getFlatcarAction(pkg.ID)
@@ -82,8 +83,7 @@ func (q *Queries) GetPackageByVersionAndArch(appID, version string, arch types.A
 	return &pkg, nil
 }
 
-// GetPackagesCount returns the total number of packages in an app, optionally
-// filtered by a version search string.
+// GetPackagesCount retuns the total number of package in an app
 func (q *Queries) GetPackagesCount(appID string, searchVersion *string) (int, error) {
 	query := goqu.From(goqu.L("package LEFT JOIN package_channel_blacklist pcb ON package.id = pcb.package_id")).
 		Select(goqu.L(`package.*,
@@ -114,6 +114,7 @@ func (q *Queries) GetPackages(appID string, page, perPage uint64, searchVersion 
 	if err != nil {
 		return nil, err
 	}
+
 	return q.getPackagesFromQuery(queryString)
 }
 
@@ -124,9 +125,12 @@ func (q *Queries) getPackagesFromQuery(query string) ([]*types.Package, error) {
 		return nil, err
 	}
 	defer rows.Close()
+
+	// Load all packages
 	for rows.Next() {
 		pkg := types.Package{}
-		if err := rows.StructScan(&pkg); err != nil {
+		err = rows.StructScan(&pkg)
+		if err != nil {
 			return nil, err
 		}
 		pkgs = append(pkgs, &pkg)
@@ -134,23 +138,28 @@ func (q *Queries) getPackagesFromQuery(query string) ([]*types.Package, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
 	if len(pkgs) == 0 {
 		return pkgs, nil
 	}
+
+	// Use loadPackageExtras to batch load extra files and actions
 	return q.loadPackageExtras(pkgs)
 }
 
-// loadPackageExtras loads extra files and flatcar actions for a slice of
-// packages efficiently (one query per kind, instead of one per package).
+// loadPackageExtras loads extra files and flatcar actions for packages efficiently
 func (q *Queries) loadPackageExtras(packages []*types.Package) ([]*types.Package, error) {
 	if len(packages) == 0 {
 		return packages, nil
 	}
+
+	// Collect package IDs
 	pkgIDs := make([]string, len(packages))
 	for i, pkg := range packages {
 		pkgIDs[i] = pkg.ID
 	}
 
+	// Load extra files
 	query, _, err := goqu.From("package_file").
 		Where(goqu.C("package_id").In(pkgIDs)).
 		Order(goqu.C("package_id").Asc(), goqu.C("id").Asc()).
@@ -158,30 +167,36 @@ func (q *Queries) loadPackageExtras(packages []*types.Package) ([]*types.Package
 	if err != nil {
 		return nil, err
 	}
+
 	var files []types.File
 	if err := q.db.Select(&files, query); err != nil {
 		return nil, err
 	}
+
 	filesByPkg := make(map[string][]types.File)
 	for _, file := range files {
 		filesByPkg[file.PackageID] = append(filesByPkg[file.PackageID], file)
 	}
 
+	// Load Flatcar actions
 	query, _, err = goqu.From("flatcar_action").
 		Where(goqu.C("package_id").In(pkgIDs)).
 		ToSQL()
 	if err != nil {
 		return nil, err
 	}
+
 	var actions []types.FlatcarAction
 	if err := q.db.Select(&actions, query); err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
+
 	actionsByPkg := make(map[string]*types.FlatcarAction)
 	for i := range actions {
 		actionsByPkg[actions[i].PackageID] = &actions[i]
 	}
 
+	// Assign files and actions to packages
 	for _, pkg := range packages {
 		if files, ok := filesByPkg[pkg.ID]; ok {
 			pkg.ExtraFiles = files
@@ -194,50 +209,53 @@ func (q *Queries) loadPackageExtras(packages []*types.Package) ([]*types.Package
 			pkg.FlatcarAction = nil
 		}
 	}
+
 	return packages, nil
 }
 
-// packagesQuery returns a SelectDataset prepared to return all packages,
-// ordered by semver descending. Callers extend the base with additional
-// filters.
+// packagesQuery returns a SelectDataset prepared to return all packages.
+// This query is meant to be extended later in the methods using it to filter
+// by a specific package id, all packages that belong to a given application,
+// specify how to query the rows or their destination.
 func (q *Queries) packagesQuery() *goqu.SelectDataset {
-	// Note: semverToIntArray error handling is deferred to when ToSQL() is
-	// called since goqu.SelectDataset doesn't support immediate error returns.
+	// Note: semverToIntArray error handling is deferred to when ToSQL() is called
+	// since goqu.SelectDataset doesn't support immediate error returns
 	semverExpr, err := semverToIntArray("version")
 	if err != nil {
+		// Return an invalid query that will fail when ToSQL() is called
 		return goqu.From("invalid_table_error_" + err.Error())
 	}
-	return goqu.From(goqu.L("package LEFT JOIN package_channel_blacklist pcb ON package.id = pcb.package_id")).
+
+	query := goqu.From(goqu.L("package LEFT JOIN package_channel_blacklist pcb ON package.id = pcb.package_id")).
 		Select(goqu.L(`package.*,
 	    array_agg(pcb.channel_id) FILTER (WHERE pcb.channel_id IS NOT NULL) as channels_blacklist
 	    `)).
 		GroupBy("package.id").Order(goqu.L(semverExpr).Desc())
+	return query
 }
-
 func (q *Queries) getFlatcarActionQuery(packageID string) *goqu.SelectDataset {
-	return goqu.From("flatcar_action").Where(goqu.C("package_id").Eq(packageID))
+	query := goqu.From("flatcar_action").Where(goqu.C("package_id").Eq(packageID))
+	return query
 }
-
 func (q *Queries) getFlatcarAction(packageID string) (*types.FlatcarAction, error) {
 	query, _, err := q.getFlatcarActionQuery(packageID).ToSQL()
 	if err != nil {
 		return nil, err
 	}
 	flatcarAction := types.FlatcarAction{}
-	if err := q.db.QueryRowx(query).StructScan(&flatcarAction); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&flatcarAction)
+	if err != nil {
 		return nil, err
 	}
 	return &flatcarAction, nil
 }
 
 func (q *Queries) getExtraFiles(packageID string) ([]types.File, error) {
-	query, _, err := goqu.From("package_file").
-		Where(goqu.C("package_id").Eq(packageID)).
-		Order(goqu.C("id").Asc()).
-		ToSQL()
+	query, _, err := goqu.From("package_file").Where(goqu.C("package_id").Eq(packageID)).Order(goqu.C("id").Asc()).ToSQL()
 	if err != nil {
 		return nil, err
 	}
+
 	var files []types.File
 	rows, err := q.db.Queryx(query)
 	if err != nil {
@@ -249,6 +267,7 @@ func (q *Queries) getExtraFiles(packageID string) ([]types.File, error) {
 		if err := rows.StructScan(&f); err != nil {
 			return nil, err
 		}
+
 		files = append(files, f)
 	}
 	if err := rows.Err(); err != nil {
@@ -257,16 +276,14 @@ func (q *Queries) getExtraFiles(packageID string) ([]types.File, error) {
 	return files, nil
 }
 
-// getPackage loads a single package by its null-wrapped id and hydrates the
-// FlatcarAction and ExtraFiles fields. Called from GetPackage and from
-// channel reads that resolve a channel's current package.
 func (q *Queries) getPackage(packageID null.String) (*types.Package, error) {
 	query, _, err := q.packagesQuery().Where(goqu.C("id").Eq(packageID)).ToSQL()
 	if err != nil {
 		return nil, err
 	}
 	packageEntity := types.Package{}
-	if err := q.db.QueryRowx(query).StructScan(&packageEntity); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&packageEntity)
+	if err != nil {
 		return nil, err
 	}
 	flatcarAction, err := q.getFlatcarAction(packageEntity.ID)
@@ -278,6 +295,7 @@ func (q *Queries) getPackage(packageID null.String) (*types.Package, error) {
 	default:
 		return nil, err
 	}
+
 	extraFiles, err := q.getExtraFiles(packageEntity.ID)
 	switch err {
 	case nil:
@@ -287,5 +305,14 @@ func (q *Queries) getPackage(packageID null.String) (*types.Package, error) {
 	default:
 		return nil, err
 	}
+
 	return &packageEntity, nil
 }
+
+// updatePackageBlacklistedChannels adds or removes as needed channels to the
+// package's channels blacklist based on the new entries provided in the updated
+// package entry.
+//
+// This method is part of the transaction that updates a package and when it's
+// called, the package has already been updated except for the channels
+// blacklist, that may happen here if needed.

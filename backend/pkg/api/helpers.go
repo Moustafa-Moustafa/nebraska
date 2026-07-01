@@ -6,14 +6,6 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 )
 
-// validatePaginationParams forwards to shared.ValidatePaginationParams. It
-// stays here as a thin local name so existing pkg/api callers compile
-// unchanged.
-var validatePaginationParams = shared.ValidatePaginationParams
-
-// sqlPaginate forwards to shared.SQLPaginate.
-var sqlPaginate = shared.SQLPaginate
-
 // isValidSemver forwards to shared.IsValidSemver.
 var isValidSemver = shared.IsValidSemver
 

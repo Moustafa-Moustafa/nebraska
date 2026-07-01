@@ -23,7 +23,8 @@ func (q *Queries) GetEvent(instanceID string, appID string, timestamp time.Time)
 		return null.NewString("", true), err
 	}
 	var errCode null.String
-	if err := q.db.QueryRow(query).Scan(&errCode); err != nil {
+	err = q.db.QueryRow(query).Scan(&errCode)
+	if err != nil {
 		return null.NewString("", true), err
 	}
 	return errCode, nil

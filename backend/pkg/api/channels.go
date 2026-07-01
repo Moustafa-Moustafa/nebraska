@@ -137,16 +137,9 @@ func (api *API) GetChannels(appID string, page, perPage uint64) ([]*Channel, err
 	return api.queries.GetChannels(appID, page, perPage)
 }
 
-// getChannels forwards to api.queries.GetChannelsForApp. Used internally by
-// applications.go's GetApp read; once that moves to dbreads the forwarder
-// disappears.
-func (api *API) getChannels(appID string) ([]*Channel, error) {
-	return api.queries.GetChannelsForApp(appID)
-}
-
 // validatePackage checks if a package belongs to the application provided and
 // that the channel is not in the package's channels blacklist. It returns the
-// package if everything is ok. Writer-side helper, stays here.
+// package if everything is ok.
 func (api *API) validatePackage(packageID, channelID, appID string, channelArch Arch) (*Package, error) {
 	pkg, err := api.GetPackage(packageID)
 	if err == nil {

@@ -37,8 +37,10 @@ func (q *Queries) GetTeams() ([]*types.Team, error) {
 
 // GetTeam returns the first team row. Nebraska currently exposes a single
 // team to callers; this helper is the single source of that team's id.
+// GetTeam returns the first team row. Nebraska currently exposes a single
+// team to callers; this helper is the single source of that team's id.
 func (q *Queries) GetTeam() (*types.Team, error) {
-	team := &types.Team{}
+	var team = &types.Team{}
 	query, _, err := goqu.From("team").
 		Select("id", "name", "created_ts").
 		Limit(1).
@@ -46,7 +48,8 @@ func (q *Queries) GetTeam() (*types.Team, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(team); err != nil {
+	err = q.db.QueryRowx(query).StructScan(team)
+	if err != nil {
 		return nil, err
 	}
 	return team, nil

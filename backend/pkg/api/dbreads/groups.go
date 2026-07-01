@@ -136,8 +136,7 @@ func SetCacheLifespanForTest(lifespan time.Duration) time.Duration {
 
 // --- reads ---------------------------------------------------------------
 
-// GetGroup returns the group identified by the id provided. The Channel
-// field is hydrated when set.
+// GetGroup returns the group identified by the id provided.
 func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
 	var group types.Group
 
@@ -147,7 +146,8 @@ func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&group); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&group)
+	if err != nil {
 		return nil, err
 	}
 	if group.ChannelID.String == "" {
@@ -166,20 +166,24 @@ func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
 	return &group, nil
 }
 
-// GetGroupID returns the ID of the first group matching the given track name
-// and channel architecture for the given app. Backed by an in-memory cache
-// invalidated by UpdateCachedGroups.
+// GetGroupID returns the ID of the first group identified by the track name and the channel architecture.
+// The track names should be unique in combination with the group's channel architecture but this is not
+// enforced on the DB level and the newest entry wins.
 func (q *Queries) GetGroupID(appID, trackName string, arch types.Arch) (string, error) {
 	var cachedGroupsRef map[types.GroupDescriptor]string
 	cachedGroupsLock.RLock()
 	if cachedGroups != nil {
+		// Keep a reference to the map that we found.
 		cachedGroupsRef = cachedGroups
 	}
 	cachedGroupsLock.RUnlock()
-
+	// Generate map on startup or if invalidated.
 	if cachedGroupsRef == nil {
 		cachedGroupsLock.Lock()
 		cachedGroupsRef = cachedGroups
+		// If a concurrent execution generated it inbetween our RUnlock() and Lock(),
+		// we can use this because any invalidation inbetween must have happened
+		// before the generation because all writes are sequential.
 		if cachedGroupsRef == nil {
 			cachedGroups = make(map[types.GroupDescriptor]string)
 			query, _, err := goqu.From("groups").ToSQL()
@@ -187,13 +191,17 @@ func (q *Queries) GetGroupID(appID, trackName string, arch types.Arch) (string, 
 			if err == nil {
 				groups, err = q.getGroupsFromQuery(query)
 			}
+			// Checks boths errors above.
 			if err != nil {
 				l.Error().Err(err).Msg("GetGroupID error")
 			} else {
 				for _, group := range groups {
 					if group.Channel != nil {
 						descriptor := types.GroupDescriptor{AppID: group.ApplicationID, Track: group.Track, Arch: group.Channel.Arch}
+						// The groups are sorted descendingly by the creation time.
+						// The newest group with the track name and arch wins.
 						if otherID, ok := cachedGroups[descriptor]; ok {
+							// Log a warning for others.
 							l.Warn().Str("group", group.ID).Str("group2", otherID).Str("track", group.Track).Msg("GetGroupID - another group already uses the same track name and architecture")
 						}
 						cachedGroups[descriptor] = group.ID
@@ -202,11 +210,13 @@ func (q *Queries) GetGroupID(appID, trackName string, arch types.Arch) (string, 
 					}
 				}
 			}
+			// Keep a reference to the map we created.
 			cachedGroupsRef = cachedGroups
 		}
 		cachedGroupsLock.Unlock()
 	}
 
+	// Trim space and the {} that may surround the ID
 	appIDNoBrackets := strings.TrimSpace(appID)
 	if len(appIDNoBrackets) > 1 && appIDNoBrackets[0] == '{' {
 		appIDNoBrackets = strings.TrimSpace(appIDNoBrackets[1 : len(appIDNoBrackets)-1])
@@ -219,11 +229,9 @@ func (q *Queries) GetGroupID(appID, trackName string, arch types.Arch) (string, 
 	return cachedGroupID, nil
 }
 
-// GetGroupsCount returns the total number of groups in an app.
+// GetGroupsCount retuns the total number of groups in an app
 func (q *Queries) GetGroupsCount(appID string) (int, error) {
-	query := goqu.From("groups").
-		Where(goqu.C("application_id").Eq(appID)).
-		Select(goqu.L("count(*)"))
+	query := goqu.From("groups").Where(goqu.C("application_id").Eq(appID)).Select(goqu.L("count(*)"))
 	return q.GetCountQuery(query)
 }
 
@@ -241,10 +249,7 @@ func (q *Queries) GetGroups(appID string, page, perPage uint64) ([]*types.Group,
 	return q.getGroupsFromQuery(query)
 }
 
-// GetGroupsForApp returns every group for the given app. Used internally by
-// application reads to hydrate Application.Groups. Renamed from the previous
-// private getGroups so callers across the package boundary can reach it.
-func (q *Queries) GetGroupsForApp(appID string) ([]*types.Group, error) {
+func (q *Queries) getGroups(appID string) ([]*types.Group, error) {
 	query, _, err := q.groupsQuery().Where(goqu.C("application_id").Eq(appID)).ToSQL()
 	if err != nil {
 		return nil, err
@@ -312,7 +317,8 @@ func (q *Queries) GetGroupUpdatesStats(group *types.Group) (*types.UpdatesStats,
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&updatesStats); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&updatesStats)
+	if err != nil {
 		return nil, err
 	}
 	return &updatesStats, nil
@@ -379,7 +385,8 @@ func (q *Queries) GetGroupVersionBreakdown(groupID string) ([]*types.VersionBrea
 	defer rows.Close()
 	for rows.Next() {
 		var entry types.VersionBreakdownEntry
-		if err := rows.StructScan(&entry); err != nil {
+		err := rows.StructScan(&entry)
+		if err != nil {
 			return nil, err
 		}
 		entryList = append(entryList, &entry)
@@ -433,7 +440,8 @@ func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.Insta
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&instancesStats); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&instancesStats)
+	if err != nil {
 		return nil, err
 	}
 	return &instancesStats, nil
@@ -639,7 +647,8 @@ func (q *Queries) GetGroupStatusCountTimeline(groupID string, duration string) (
 	defer rows.Close()
 	for rows.Next() {
 		var timelineEntryEntity types.StatusVersionCountTimelineEntry
-		if err := rows.StructScan(&timelineEntryEntity); err != nil {
+		err := rows.StructScan(&timelineEntryEntity)
+		if err != nil {
 			return nil, err
 		}
 		timelineEntry = append(timelineEntry, timelineEntryEntity)

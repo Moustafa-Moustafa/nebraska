@@ -209,12 +209,6 @@ func (api *API) GetGroups(appID string, page, perPage uint64) ([]*Group, error) 
 	return api.queries.GetGroups(appID, page, perPage)
 }
 
-// getGroups forwards to api.queries.GetGroupsForApp. Used internally by
-// applications.go's GetApp until that read also moves to dbreads.
-func (api *API) getGroups(appID string) ([]*Group, error) {
-	return api.queries.GetGroupsForApp(appID)
-}
-
 // validateChannel checks if a channel belongs to the application provided.
 func (api *API) validateChannel(channelID, appID string) error {
 	channel, err := api.GetChannel(channelID)
@@ -276,6 +270,7 @@ func (api *API) GetGroupVersionBreakdown(groupID string) ([]*VersionBreakdownEnt
 func (api *API) GetGroupInstancesStats(groupID, duration string) (*InstancesStatusStats, error) {
 	return api.queries.GetGroupInstancesStats(groupID, duration)
 }
+
 // duration helpers + isNightlyVersion + updateVersionTimeline moved to
 // pkg/api/dbreads/groups.go.
 

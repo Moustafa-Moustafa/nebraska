@@ -9,8 +9,7 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// GetChannel returns the channel identified by the id provided. The
-// returned channel has its Package field hydrated when set.
+// GetChannel returns the channel identified by the id provided.
 func (q *Queries) GetChannel(channelID string) (*types.Channel, error) {
 	var channel types.Channel
 
@@ -20,7 +19,8 @@ func (q *Queries) GetChannel(channelID string) (*types.Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := q.db.QueryRowx(query).StructScan(&channel); err != nil {
+	err = q.db.QueryRowx(query).StructScan(&channel)
+	if err != nil {
 		return nil, err
 	}
 	packageEntity, err := q.getPackage(channel.PackageID)
@@ -35,11 +35,9 @@ func (q *Queries) GetChannel(channelID string) (*types.Channel, error) {
 	return &channel, nil
 }
 
-// GetChannelsCount returns the total number of channels in an app.
+// GetChannelsCount retuns the total number of channels in an app
 func (q *Queries) GetChannelsCount(appID string) (int, error) {
-	query := goqu.From("channel").
-		Where(goqu.C("application_id").Eq(appID)).
-		Select(goqu.L("count(*)"))
+	query := goqu.From("channel").Where(goqu.C("application_id").Eq(appID)).Select(goqu.L("count(*)"))
 	return q.GetCountQuery(query)
 }
 
@@ -58,11 +56,7 @@ func (q *Queries) GetChannels(appID string, page, perPage uint64) ([]*types.Chan
 	return q.getChannelsFromQuery(query)
 }
 
-// GetChannelsForApp returns every channel for the given application. Used
-// internally by application reads to hydrate Application.Channels. Renamed
-// from the previous private `getChannels` so callers across the package
-// boundary (pkg/api shims) can reach it.
-func (q *Queries) GetChannelsForApp(appID string) ([]*types.Channel, error) {
+func (q *Queries) getChannels(appID string) ([]*types.Channel, error) {
 	query, _, err := q.channelsQuery().
 		Where(goqu.C("application_id").Eq(appID)).
 		ToSQL()
@@ -84,6 +78,7 @@ func (q *Queries) getChannelsFromQuery(query string) ([]*types.Channel, error) {
 		if err := rows.StructScan(&channel); err != nil {
 			return nil, err
 		}
+
 		packageEntity, err := q.getPackage(channel.PackageID)
 		switch err {
 		case nil:
@@ -102,5 +97,6 @@ func (q *Queries) getChannelsFromQuery(query string) ([]*types.Channel, error) {
 }
 
 func (q *Queries) channelsQuery() *goqu.SelectDataset {
-	return goqu.From("channel").Order(goqu.I("name").Asc())
+	query := goqu.From("channel").Order(goqu.I("name").Asc())
+	return query
 }
