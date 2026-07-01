@@ -7,7 +7,6 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"github.com/google/uuid"
 
-	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -80,7 +79,7 @@ func (api *API) AddGroup(group *Group) (*Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbreads.UpdateCachedGroups()
+	api.queries.UpdateCachedGroups()
 	// Re-read through groupsQuery so the returned struct reflects the joined
 	// group_local row.
 	return api.GetGroup(group.ID)
@@ -138,7 +137,7 @@ func (api *API) UpdateGroup(group *Group) error {
 	if rowsAffected == 0 {
 		return ErrNoRowsAffected
 	}
-	dbreads.UpdateCachedGroups()
+	api.queries.UpdateCachedGroups()
 	return nil
 }
 
@@ -185,7 +184,7 @@ func (api *API) DeleteGroup(groupID string) error {
 	if rowsAffected == 0 {
 		return ErrNoRowsAffected
 	}
-	dbreads.UpdateCachedGroups()
+	api.queries.UpdateCachedGroups()
 	return nil
 }
 

@@ -116,7 +116,7 @@ var (
 
 // UpdateCachedGroups invalidates the cached track names in cachedGroups and
 // must be called whenever the group entries are modified.
-func UpdateCachedGroups() {
+func (q *Queries) UpdateCachedGroups() {
 	cachedGroupsLock.Lock()
 	cachedGroups = nil
 	// Generating the map is not always possible here because the database
@@ -310,8 +310,7 @@ func (q *Queries) GetGroupUpdatesStats(group *types.Group) (*types.UpdatesStats,
 		goqu.COALESCE(goqu.SUM(goqu.L("case when last_update_granted_ts > now() at time zone 'utc' - interval ? then 1 else 0 end", group.PolicyPeriodInterval)), 0).As("updates_granted_in_last_period"),
 		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'true' and now() at time zone 'utc' - last_update_granted_ts <= interval ? then 1 else 0 end", group.PolicyUpdateTimeout)), 0).As("updates_in_progress"),
 		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'true' and now() at time zone 'utc' - last_update_granted_ts > interval ? then 1 else 0 end", group.PolicyUpdateTimeout)), 0).As("updates_timed_out"),
-	).Where(goqu.C("group_id").Eq(group.ID),
-		goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", shared.ValidityInterval),
+	).Where(goqu.C("group_id").Eq(group.ID), goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", shared.ValidityInterval),
 		goqu.L(shared.IgnoreFakeInstanceCondition("instance_id")),
 	).ToSQL()
 	if err != nil {
@@ -412,6 +411,7 @@ func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.Insta
 	}
 
 	packageVersion := ""
+
 	if group.Channel != nil && group.Channel.Package != nil {
 		packageVersion = group.Channel.Package.Version
 	}
@@ -433,8 +433,7 @@ func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.Insta
 		goqu.COALESCE(goqu.SUM(goqu.L("case when status = ? then 1 else 0 end", types.InstanceStatusDownloaded)), 0).As("downloaded"),
 		goqu.COALESCE(goqu.SUM(goqu.L("case when status = ? then 1 else 0 end", types.InstanceStatusDownloading)), 0).As("downloading"),
 		goqu.COALESCE(goqu.SUM(goqu.L("case when status = ? then 1 else 0 end", types.InstanceStatusOnHold)), 0).As("onhold"),
-	).Where(goqu.C("group_id").Eq(groupID),
-		goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", durationString),
+	).Where(goqu.C("group_id").Eq(groupID), goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", durationString),
 		goqu.L(shared.IgnoreFakeInstanceCondition("instance_id")),
 	).ToSQL()
 	if err != nil {
@@ -444,6 +443,7 @@ func (q *Queries) GetGroupInstancesStats(groupID, duration string) (*types.Insta
 	if err != nil {
 		return nil, err
 	}
+
 	return &instancesStats, nil
 }
 
@@ -472,9 +472,12 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 	queryWg := new(errgroup.Group)
 
 	timelineCount := make(map[time.Time]types.VersionCountMap)
+
 	timelineEntryEntities := []types.VersionCountTimelineEntry{}
 
 	queryWg.Go(func() error {
+		// active instance without instance_status_history status as 4
+
 		instancesWithoutStatusQuery := fmt.Sprintf(`with time_series as ( select * from generate_series( now() - interval '%[2]s', now(), interval '%[3]s' ) as ts ), instances as ( select ia.instance_id, case when last_update_granted_ts is not null then last_update_granted_ts else ia.created_ts end, ia."version" from instance_application ia left join ( select * from instance_status_history where group_id = '%[1]s' and created_ts >= now() - interval '%[4]s' and status = 4 ) ish on ia.instance_id = ish.instance_id where (ia."group_id" = '%[1]s') and last_check_for_updates >= now() - interval '%[2]s' and ( ia.instance_id is null or ia.instance_id not like '{________-____-____-____-____________}' ) and ia.version not like '%%nightly%%' and ish.instance_id is null ) select ts, ( case when version is null then '' else version end ), sum( case when version is not null then 1 else 0 end ) total from ( select * from time_series left join ( select * from instances ) _ on created_ts <= time_series.ts ) as _ group by 1, 2 order by ts desc;`, groupID, durationString, interval, deadInstanceTimeSpan)
 
 		rows, err := q.db.Queryx(instancesWithoutStatusQuery)
@@ -489,11 +492,14 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 			}
 			timelineEntryEntities = append(timelineEntryEntities, timelineEntryEntity)
 		}
+
 		return nil
 	})
 
 	instanceWithStatusInInterval := []types.InstanceStatusHistoryEntry{}
 	queryWg.Go(func() error {
+		// active instances with instance_status_history in the interval
+
 		instanceWithStatusHistoryInInterval := fmt.Sprintf(`
 			select * from instance_status_history ish inner join (select instance_id from instance_application where ( "group_id" = '%[1]s' ) AND last_check_for_updates >= now() - interval '%[2]s' AND ( instance_id IS NULL OR instance_id NOT LIKE '{________-____-____-____-____________}')) ia on ish.instance_id = ia.instance_id  where ish.group_id = '%[1]s' and ish.status=4 and ish.created_ts >= now()-interval '%[2]s' order by ish.instance_id,ish.created_ts desc;
 			`, groupID, durationString)
@@ -503,6 +509,7 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 			return err
 		}
 		defer statusHistoryRows.Close()
+
 		for statusHistoryRows.Next() {
 			rI := types.InstanceStatusHistoryEntry{}
 			if err := statusHistoryRows.StructScan(&rI); err != nil {
@@ -520,6 +527,7 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 
 	versionCounts := []versionCount{}
 	queryWg.Go(func() error {
+		// grouped version count for active instances that don't have instance_status_history in the interval
 		instancesWithoutStatusInIntervalQuery := fmt.Sprintf(
 			`with active_instance as (select instance_id from instance_application where group_id = '%[1]s' and last_check_for_updates >= now() - interval '%[2]s'  and( instance_id IS NULL OR instance_id NOT LIKE '{________-____-____-____-____________}')) ,
 			instance_status_interval as (select distinct instance_id from instance_status_history where instance_id in (select instance_id from active_instance) and status = 4 and created_ts >= now()-interval '%[2]s'),
@@ -531,22 +539,27 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 		if err != nil {
 			return err
 		}
+
 		for versionAggRows.Next() {
 			vc := versionCount{}
-			if err := versionAggRows.StructScan(&vc); err != nil {
+			err = versionAggRows.StructScan(&vc)
+			if err != nil {
 				return err
 			}
 			versionCounts = append(versionCounts, vc)
 		}
+
 		return nil
 	})
 
-	if err := queryWg.Wait(); err != nil {
+	err = queryWg.Wait()
+	if err != nil {
 		return nil, false, err
 	}
 
 	allVersions := make(map[string]struct{})
 	spans := []time.Time{}
+	// post query processing for instances without status history
 	for _, entry := range timelineEntryEntities {
 		value, ok := timelineCount[entry.Time]
 		if !ok {
@@ -554,17 +567,25 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 			value = make(types.VersionCountMap)
 			timelineCount[entry.Time] = value
 		}
+
+		// The query may produce a time entry with an empty string for the version when there are
+		// no instances for that time interval, so we skip adding those to the result.
 		if entry.Version == "" {
 			continue
 		}
+
 		allVersions[entry.Version] = struct{}{}
 		versionCount, ok := value[entry.Version]
 		if !ok {
 			versionCount = entry.Total
 		}
+
 		value[entry.Version] = versionCount
 	}
 
+	// We want to return all the versions count per time-interval, i.e. we
+	// don't want some time-intervals to have 3 versions accounted, and others
+	// just 1, so this assigns the missing versions per interval.
 	for version := range allVersions {
 		for timestamp := range timelineCount {
 			if _, ok := timelineCount[timestamp][version]; !ok {
@@ -573,6 +594,7 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 		}
 	}
 
+	// post query processing for active instances with instance_status_history in the interval
 	latestHistoryTime := time.Now()
 	prevInstanceID := ""
 	for _, instanceStatusHistory := range instanceWithStatusInInterval {
@@ -591,6 +613,7 @@ func (q *Queries) GetGroupVersionCountTimeline(groupID string, duration string) 
 		}
 	}
 
+	// post query processing for active instances without instance_status_history in the interval
 	for _, vc := range versionCounts {
 		if isNightlyVersion(vc.Version) {
 			continue
@@ -624,6 +647,7 @@ func (q *Queries) GetGroupStatusCountTimeline(groupID string, duration string) (
 	if err != nil {
 		return nil, err
 	}
+	// Get the versions and their number of instances per status within each of the given time intervals.
 	query := fmt.Sprintf(`
 	WITH time_series AS (SELECT * FROM generate_series(now() - interval '%[1]s', now(), INTERVAL '%[2]s') AS ts),
 	min_time AS (SELECT min(ts) AS min_ts FROM time_series),
@@ -656,30 +680,43 @@ func (q *Queries) GetGroupStatusCountTimeline(groupID string, duration string) (
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
 	allStatuses := make(map[int]struct{})
 	timelineCount := make(map[time.Time](map[int](types.VersionCountMap)))
+
+	// Create the timeline map, and gather all the statuses found.
 	for _, entry := range timelineEntry {
 		value, ok := timelineCount[entry.Time]
 		if !ok {
 			value = make(map[int](types.VersionCountMap))
 			timelineCount[entry.Time] = value
 		}
+
+		// The query may produce a time entry with a 0 value for the status when there are
+		// no instances for that time interval, so we skip adding those to the result.
 		if entry.Status == 0 {
 			continue
 		}
+
 		allStatuses[entry.Status] = struct{}{}
 		versionCount, ok := value[entry.Status]
 		if !ok {
 			versionCount = make(types.VersionCountMap)
 		}
+
+		// The query may produce a time entry with an empty string for the version when there are
+		// no instances for that time interval, so we skip adding those to the result.
 		if entry.Version == "" {
 			continue
 		}
+
 		versionCount[entry.Version] = entry.Total
+
 		value[entry.Status] = versionCount
 	}
 
+	// We want to return all the status per time-interval, i.e. we don't want
+	// some time-intervals to have 2 statuses accounted, and others just 1, so
+	// this assigns the missing statuses per interval.
 	for status := range allStatuses {
 		for timestamp := range timelineCount {
 			if _, ok := timelineCount[timestamp][status]; !ok {

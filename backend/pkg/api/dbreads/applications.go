@@ -112,7 +112,7 @@ func (q *Queries) GetApps(teamID string, page, perPage uint64) ([]*types.Applica
 
 // clearCachedAppIDs invalidates the cached app IDs in cachedApps and
 // must be called whenever the apps entries are modified.
-func ClearCachedAppIDs() {
+func (q *Queries) ClearCachedAppIDs() {
 	cachedAppsIDsLock.Lock()
 	cachedAppIDs = nil
 	// Generating the map is not always possible here because the database

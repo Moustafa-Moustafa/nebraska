@@ -43,8 +43,11 @@ const (
 
 func sortOrderFromString(str string) sortOrder {
 	val, err := strconv.Atoi(str)
-	// In case value is other than 0 or 1 or there is a wrong type passed
-	// fallback to sortOrderDesc.
+
+	/*
+		In case value is other than 0 or 1 or there is a wrong type of sortOrder passed
+		fallback to sortOrderDesc
+	*/
 	if (val != 0 && val != 1) || err != nil {
 		return sortOrderDesc
 	}
@@ -72,6 +75,7 @@ func prepareSearchQuery(finalQuery *goqu.SelectDataset, p types.InstancesQueryPa
 	searchExpression := "%" + searchValue + "%"
 	outputQuery := finalQuery
 	if searchFilter == "All" && searchValue != "" {
+		// search by alias -> ids -> ip -> date
 		outputQuery = finalQuery.Where(
 			goqu.Or(goqu.I("alias").ILike(searchExpression),
 				goqu.I("id").ILike(searchExpression),
@@ -121,6 +125,7 @@ func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error)
 	default:
 		return nil, err
 	}
+
 	return &instance, nil
 }
 
@@ -174,12 +179,14 @@ func (q *Queries) GetInstanceStatusHistory(instanceID, appID, groupID string, li
 // GetInstances returns all instances matching the criteria, paginated.
 func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (types.InstancesWithTotal, error) {
 	var instances []*types.Instance
+	var err error
 	totalCount, err := q.GetInstancesCount(p, duration)
 	if err != nil {
 		return types.InstancesWithTotal{}, err
 	}
 	p.Page, p.PerPage = shared.ValidatePaginationParams(p.Page, p.PerPage)
-	dbDuration, _, err := durationParamToPostgresTimings(durationParam(duration))
+	var dbDuration shared.PostgresDuration
+	dbDuration, _, err = durationParamToPostgresTimings(durationParam(duration))
 	if err != nil {
 		return types.InstancesWithTotal{}, err
 	}
@@ -227,15 +234,19 @@ func (q *Queries) GetInstances(p types.InstancesQueryParams, duration string) (t
 	if err := rows.Err(); err != nil {
 		return types.InstancesWithTotal{}, err
 	}
-	return types.InstancesWithTotal{
+	result := types.InstancesWithTotal{
 		TotalInstances: uint64(totalCount),
 		Instances:      instances,
-	}, nil
+	}
+	return result, nil
 }
 
 // GetInstancesCount returns the count of instances matching the criteria.
 func (q *Queries) GetInstancesCount(p types.InstancesQueryParams, duration string) (int, error) {
-	dbDuration, _, err := durationParamToPostgresTimings(durationParam(duration))
+	var err error
+
+	var dbDuration shared.PostgresDuration
+	dbDuration, _, err = durationParamToPostgresTimings(durationParam(duration))
 	if err != nil {
 		return 0, err
 	}
@@ -291,6 +302,7 @@ func (q *Queries) getFilterInstancesQuery(selectPart exp.LiteralExpression, p ty
 
 func (q *Queries) instancesQuery(p types.InstancesQueryParams, duration shared.PostgresDuration) *goqu.SelectDataset {
 	instancesSubquery := q.getFilterInstancesQuery(goqu.L("instance_id"), p, duration)
+
 	return goqu.From("instance").
 		Where(goqu.L("id IN ?", instancesSubquery))
 }

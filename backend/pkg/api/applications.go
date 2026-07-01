@@ -7,7 +7,6 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"gopkg.in/guregu/null.v4"
 
-	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -36,7 +35,7 @@ func (api *API) AddApp(app *Application) (*Application, error) {
 		return nil, err
 	}
 
-	dbreads.ClearCachedAppIDs()
+	api.queries.ClearCachedAppIDs()
 	return app, nil
 }
 
@@ -87,7 +86,7 @@ func (api *API) AddAppCloning(app *Application, sourceAppID string) (*Applicatio
 	}
 	// Even though AddApp will invalidate the cache, we need to do it again here
 	// to prevent eventual race issues.
-	dbreads.ClearCachedAppIDs()
+	api.queries.ClearCachedAppIDs()
 	return app, nil
 }
 
@@ -150,7 +149,7 @@ func (api *API) UpdateApp(app *Application) error {
 		return ErrNoRowsAffected
 	}
 
-	dbreads.ClearCachedAppIDs()
+	api.queries.ClearCachedAppIDs()
 	return nil
 }
 
@@ -172,7 +171,7 @@ func (api *API) DeleteApp(appID string) error {
 		return ErrNoRowsAffected
 	}
 
-	dbreads.ClearCachedAppIDs()
+	api.queries.ClearCachedAppIDs()
 	return nil
 }
 
