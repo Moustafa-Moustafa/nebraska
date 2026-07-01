@@ -13,39 +13,37 @@ import (
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
-// safeIdentifierRE matches column identifiers (and optional table.column form)
-// that are safe to interpolate into raw SQL. Used by semverToIntArray to
-// guard against SQL injection when callers pass a non-literal column name.
-var safeIdentifierRE = regexp.MustCompile(`^[a-z_]+(\.[a-z_]+)?$`)
-
-// semverToIntArray returns a Postgres expression that converts a semver
-// version string into an int[] for ordering/comparison.
-// The column parameter must be a safe SQL identifier (verified here).
+// semverToIntArray returns a PostgreSQL expression that converts a semantic version
+// to an integer array for proper version comparison.
+// Handles versions like "1.2.3", "1.2.3-beta", "1.2.3+build"
+// The column parameter must be a safe SQL identifier (no user input!)
 func semverToIntArray(column string) (string, error) {
-	if column != "?" && !safeIdentifierRE.MatchString(column) {
+	if column != "?" && !regexp.MustCompile(`^[a-z_]+(\.[a-z_]+)?$`).MatchString(column) {
 		return "", fmt.Errorf("semverToIntArray: invalid column name %q - potential SQL injection", column)
 	}
 	return fmt.Sprintf("string_to_array((regexp_split_to_array(%s, '[+-]'))[1], '.')::int[]", column), nil
 }
 
-// versionCompareExpr returns a goqu expression that compares the given
-// column to the given value as a semver-aware int[] comparison. Allowed
-// operators: >, >=, <, <=, =, !=.
+// versionCompareExpr creates a version comparison expression
 func versionCompareExpr(column, operator, value string) (goqu.Expression, error) {
+	// Validate operator to prevent SQL injection
 	validOperators := map[string]bool{
 		">": true, ">=": true, "<": true, "<=": true, "=": true, "!=": true,
 	}
 	if !validOperators[operator] {
 		return nil, fmt.Errorf("versionCompareExpr: invalid operator %q - potential SQL injection", operator)
 	}
+
 	colArray, err := semverToIntArray(column)
 	if err != nil {
 		return nil, err
 	}
+
 	valArray, err := semverToIntArray("?")
 	if err != nil {
 		return nil, err
 	}
+
 	return goqu.L(fmt.Sprintf("%s %s %s", colArray, operator, valArray), value), nil
 }
 

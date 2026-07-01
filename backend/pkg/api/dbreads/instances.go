@@ -336,35 +336,43 @@ func (q *Queries) InstanceStatsQuery(t *time.Time, duration *time.Duration) *goq
 		now := time.Now().UTC()
 		t = &now
 	}
+
 	if duration == nil {
 		d := defaultStatsInterval
 		duration = &d
 	}
 
+	// Helper function to convert duration to PostgreSQL interval string
 	durationToInterval := func(d time.Duration) string {
 		if d <= 0 {
 			d = time.Microsecond
 		}
+
 		parts := []string{}
+
 		hours := int(d.Hours())
 		if hours != 0 {
 			parts = append(parts, fmt.Sprintf("%d hours", hours))
 		}
+
 		remainder := d - time.Duration(hours)*time.Hour
 		minutes := int(remainder.Minutes())
 		if minutes != 0 {
 			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
 		}
+
 		remainder -= time.Duration(minutes) * time.Minute
 		seconds := int(remainder.Seconds())
 		if seconds != 0 {
 			parts = append(parts, fmt.Sprintf("%d seconds", seconds))
 		}
+
 		remainder -= time.Duration(seconds) * time.Second
 		microseconds := remainder.Microseconds()
 		if microseconds != 0 {
 			parts = append(parts, fmt.Sprintf("%d microseconds", microseconds))
 		}
+
 		return strings.Join(parts, " ")
 	}
 
@@ -372,7 +380,7 @@ func (q *Queries) InstanceStatsQuery(t *time.Time, duration *time.Duration) *goq
 	timestamp := goqu.L("timestamp ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")))
 	timestampMinusDuration := goqu.L("timestamp ? - interval ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")), interval)
 
-	return goqu.From(goqu.T("instance_application")).
+	query := goqu.From(goqu.T("instance_application")).
 		Select(
 			timestamp,
 			goqu.T("channel").Col("name").As("channel_name"),
@@ -395,6 +403,8 @@ func (q *Queries) InstanceStatsQuery(t *time.Time, duration *time.Duration) *goq
 			goqu.T("channel").Col("arch"),
 			goqu.C("version")).
 		Order(timestamp.Asc())
+
+	return query
 }
 
 // GetInstanceStats returns the contents of the instance_stats table.
