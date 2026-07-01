@@ -18,12 +18,6 @@ const (
 // Application is owned by pkg/api/internal/types; re-exported here.
 type Application = types.Application
 
-// clearCachedAppIDs is a writer-side shim that forwards to
-// dbreads.InvalidateCachedAppIDs.
-func (api *API) clearCachedAppIDs() {
-	dbreads.InvalidateCachedAppIDs()
-}
-
 // AddApp registers the provided application.
 func (api *API) AddApp(app *Application) (*Application, error) {
 	if err := validateProductID(app.ProductID); err != nil {
@@ -42,7 +36,7 @@ func (api *API) AddApp(app *Application) (*Application, error) {
 		return nil, err
 	}
 
-	api.clearCachedAppIDs()
+	dbreads.ClearCachedAppIDs()
 	return app, nil
 }
 
@@ -93,7 +87,7 @@ func (api *API) AddAppCloning(app *Application, sourceAppID string) (*Applicatio
 	}
 	// Even though AddApp will invalidate the cache, we need to do it again here
 	// to prevent eventual race issues.
-	api.clearCachedAppIDs()
+	dbreads.ClearCachedAppIDs()
 	return app, nil
 }
 
@@ -156,7 +150,7 @@ func (api *API) UpdateApp(app *Application) error {
 		return ErrNoRowsAffected
 	}
 
-	api.clearCachedAppIDs()
+	dbreads.ClearCachedAppIDs()
 	return nil
 }
 
@@ -178,7 +172,7 @@ func (api *API) DeleteApp(appID string) error {
 		return ErrNoRowsAffected
 	}
 
-	api.clearCachedAppIDs()
+	dbreads.ClearCachedAppIDs()
 	return nil
 }
 

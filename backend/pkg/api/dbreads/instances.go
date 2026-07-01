@@ -108,7 +108,10 @@ func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error)
 	if err := q.db.QueryRowx(query).StructScan(&instance); err != nil {
 		return nil, err
 	}
-	instanceApplication, err := q.GetInstanceApp(appID, instance.ID, shared.ValidityInterval, "", 0)
+	/* passing "" to sortFilter while invoking getInstanceApp signifies we are not interested
+	in a sort
+	*/
+	instanceApplication, err := q.getInstanceApp(appID, instance.ID, shared.ValidityInterval, "", 0)
 	switch err {
 	case nil:
 		instance.Application = *instanceApplication
@@ -120,11 +123,7 @@ func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error)
 	return &instance, nil
 }
 
-// GetInstanceApp returns the instance_application row matching the given
-// instance+app+duration filter. Renamed from the previous private
-// getInstanceApp so RegisterInstance (writer) can call it across the package
-// boundary.
-func (q *Queries) GetInstanceApp(appID, instanceID string, duration shared.PostgresDuration, sortFilter string, orderOfSort sortOrder) (*types.InstanceApplication, error) {
+func (q *Queries) getInstanceApp(appID, instanceID string, duration shared.PostgresDuration, sortFilter string, orderOfSort sortOrder) (*types.InstanceApplication, error) {
 	var instanceApp types.InstanceApplication
 	query, _, err := q.instanceAppQuery(appID, instanceID, duration, sortFilter, orderOfSort).ToSQL()
 	if err != nil {
@@ -308,11 +307,15 @@ func (q *Queries) GetDefaultInterval() time.Duration {
 	return defaultStatsInterval
 }
 
-// instanceStatsQuery returns the SELECT used to estimate the active fleet
-// size at a point in time. Duplicated in pkg/api/instances.go for the
-// UpdateInstanceStats writer (it builds the same query but inserts the
-// result rather than returning them).
-func (q *Queries) instanceStatsQuery(t *time.Time, duration *time.Duration) *goqu.SelectDataset {
+// InstanceStatsQuery returns a SelectDataset to estimate the active fleet size at a given point in time.
+// It answers "how many instances were part of the active fleet on day X",
+// not "how many instances specifically checked in on day X".
+//
+// Since last_check_for_updates gets overwritten on every check-in, we cannot determine
+// whether an instance was active on a specific past day. Instead, we count instances that:
+//  1. existed at the time (created_ts <= timestamp)
+//  2. are still alive (last_check_for_updates > timestamp - duration)
+func (q *Queries) InstanceStatsQuery(t *time.Time, duration *time.Duration) *goqu.SelectDataset {
 	if t == nil {
 		now := time.Now().UTC()
 		t = &now

@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
-	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -25,11 +24,6 @@ type (
 	InstancesStatusStats            = types.InstancesStatusStats
 	UpdatesStats                    = types.UpdatesStats
 )
-
-// postgresDuration is the Postgres INTERVAL type used by writer-side helpers
-// in applications.go / instances.go that still take a typed duration value.
-// Kept here as an alias so those callers compile unchanged.
-type postgresDuration = shared.PostgresDuration
 
 var (
 	// ErrInvalidChannel error indicates that a channel doesn't belong to the
@@ -86,7 +80,7 @@ func (api *API) AddGroup(group *Group) (*Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	api.updateCachedGroups()
+	dbreads.UpdateCachedGroups()
 	// Re-read through groupsQuery so the returned struct reflects the joined
 	// group_local row.
 	return api.GetGroup(group.ID)
@@ -144,7 +138,7 @@ func (api *API) UpdateGroup(group *Group) error {
 	if rowsAffected == 0 {
 		return ErrNoRowsAffected
 	}
-	api.updateCachedGroups()
+	dbreads.UpdateCachedGroups()
 	return nil
 }
 
@@ -191,7 +185,7 @@ func (api *API) DeleteGroup(groupID string) error {
 	if rowsAffected == 0 {
 		return ErrNoRowsAffected
 	}
-	api.updateCachedGroups()
+	dbreads.UpdateCachedGroups()
 	return nil
 }
 
@@ -203,13 +197,6 @@ func (api *API) GetGroup(groupID string) (*Group, error) {
 // GetGroupID forwards to api.queries; cache + SQL in pkg/api/dbreads/groups.go.
 func (api *API) GetGroupID(appID, trackName string, arch Arch) (string, error) {
 	return api.queries.GetGroupID(appID, trackName, arch)
-}
-
-// updateCachedGroups forwards to dbreads.InvalidateCachedGroups. Kept on
-// *API so writer call sites (AddGroup/UpdateGroup/DeleteGroup) compile
-// unchanged.
-func (api *API) updateCachedGroups() {
-	dbreads.InvalidateCachedGroups()
 }
 
 // GetGroupsCount forwards to api.queries.

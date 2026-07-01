@@ -3,13 +3,11 @@ package api
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/google/uuid"
 
-	"github.com/flatcar/nebraska/backend/pkg/api/internal/shared"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 )
 
@@ -40,10 +38,6 @@ const (
 // NewInstanceApplication is re-exported (functions cannot be aliased like
 // types, so the wrapper forwards to types.NewInstanceApplication).
 var NewInstanceApplication = types.NewInstanceApplication
-
-// defaultStatsInterval is kept here so the writer-side instanceStatsQuery
-// (used by UpdateInstanceStats) can default duration when callers pass nil.
-const defaultStatsInterval time.Duration = 24 * time.Hour
 
 // RegisterInstance registers an instance into Nebraska.
 func (api *API) RegisterInstance(inst Instance, instApp InstanceApplication) (*Instance, error) {
@@ -313,98 +307,6 @@ func (api *API) GetDefaultInterval() time.Duration {
 	return api.queries.GetDefaultInterval()
 }
 
-// ignoreFakeInstanceCondition forwards to shared.IgnoreFakeInstanceCondition;
-// kept here because the writer-side instanceStatsQuery below references it.
-var ignoreFakeInstanceCondition = shared.IgnoreFakeInstanceCondition
-
-// instanceStatsQuery returns a SelectDataset to estimate the active fleet size at a given point in time.
-// It answers "how many instances were part of the active fleet on day X",
-// not "how many instances specifically checked in on day X".
-//
-// Since last_check_for_updates gets overwritten on every check-in, we cannot determine
-// whether an instance was active on a specific past day. Instead, we count instances that:
-//  1. existed at the time (created_ts <= timestamp)
-//  2. are still alive (last_check_for_updates > timestamp - duration)
-//
-// This is duplicated in pkg/api/dbreads/instances.go for the read-side
-// GetInstanceStats / GetInstanceStatsByTimestamp callers. Keep the two
-// copies in sync.
-func (api *API) instanceStatsQuery(t *time.Time, duration *time.Duration) *goqu.SelectDataset {
-	if t == nil {
-		now := time.Now().UTC()
-		t = &now
-	}
-
-	if duration == nil {
-		d := defaultStatsInterval
-		duration = &d
-	}
-
-	// Helper function to convert duration to PostgreSQL interval string
-	durationToInterval := func(d time.Duration) string {
-		if d <= 0 {
-			d = time.Microsecond
-		}
-
-		parts := []string{}
-
-		hours := int(d.Hours())
-		if hours != 0 {
-			parts = append(parts, fmt.Sprintf("%d hours", hours))
-		}
-
-		remainder := d - time.Duration(hours)*time.Hour
-		minutes := int(remainder.Minutes())
-		if minutes != 0 {
-			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
-		}
-
-		remainder -= time.Duration(minutes) * time.Minute
-		seconds := int(remainder.Seconds())
-		if seconds != 0 {
-			parts = append(parts, fmt.Sprintf("%d seconds", seconds))
-		}
-
-		remainder -= time.Duration(seconds) * time.Second
-		microseconds := remainder.Microseconds()
-		if microseconds != 0 {
-			parts = append(parts, fmt.Sprintf("%d microseconds", microseconds))
-		}
-
-		return strings.Join(parts, " ")
-	}
-
-	interval := durationToInterval(*duration)
-	timestamp := goqu.L("timestamp ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")))
-	timestampMinusDuration := goqu.L("timestamp ? - interval ?", goqu.V(t.Format("2006-01-02T15:04:05.999999Z07:00")), interval)
-
-	query := goqu.From(goqu.T("instance_application")).
-		Select(
-			timestamp,
-			goqu.T("channel").Col("name").As("channel_name"),
-			goqu.Case().
-				When(goqu.T("channel").Col("arch").Eq(1), "AMD64").
-				When(goqu.T("channel").Col("arch").Eq(2), "ARM").
-				Else("").
-				As("arch"),
-			goqu.C("version").As("version"),
-			goqu.COUNT("*").As("instances")).Distinct().
-		Join(goqu.T("groups"), goqu.On(goqu.C("group_id").Eq(goqu.T("groups").Col("id")))).
-		Join(goqu.T("channel"), goqu.On(goqu.T("groups").Col("channel_id").Eq(goqu.T("channel").Col("id")))).
-		Join(goqu.T("instance"), goqu.On(goqu.T("instance_application").Col("instance_id").Eq(goqu.T("instance").Col("id")))).
-		Where(
-			goqu.C("last_check_for_updates").Gt(timestampMinusDuration),
-			goqu.L(ignoreFakeInstanceCondition("instance_id")),
-			goqu.T("instance").Col("created_ts").Lte(timestamp)).
-		GroupBy(timestamp,
-			goqu.T("channel").Col("name"),
-			goqu.T("channel").Col("arch"),
-			goqu.C("version")).
-		Order(timestamp.Asc())
-
-	return query
-}
-
 // GetInstanceStats forwards to dbreads.Queries.GetInstanceStats.
 func (api *API) GetInstanceStats() ([]InstanceStats, error) {
 	return api.queries.GetInstanceStats()
@@ -420,7 +322,7 @@ func (api *API) GetInstanceStatsByTimestamp(t time.Time) ([]InstanceStats, error
 func (api *API) UpdateInstanceStats(t *time.Time, duration *time.Duration) error {
 	insertQuery, _, err := goqu.Insert(goqu.T("instance_stats")).
 		Cols("timestamp", "channel_name", "arch", "version", "instances").
-		FromQuery(api.instanceStatsQuery(t, duration)).
+		FromQuery(api.queries.InstanceStatsQuery(t, duration)).
 		ToSQL()
 	if err != nil {
 		return err

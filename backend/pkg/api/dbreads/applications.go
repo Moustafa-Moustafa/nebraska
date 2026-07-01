@@ -24,12 +24,13 @@ var (
 	cachedAppsIDsLock sync.RWMutex
 )
 
-// InvalidateCachedAppIDs clears the cached app id map. Writer-side mutations
-// of the application table (AddApp/UpdateApp/DeleteApp/AddAppCloning) must
-// call this so the next GetAppID call rebuilds the cache from the database.
-func InvalidateCachedAppIDs() {
+// ClearCachedAppIDs invalidates the cached app IDs in cachedApps and
+// must be called whenever the apps entries are modified.
+func ClearCachedAppIDs() {
 	cachedAppsIDsLock.Lock()
 	cachedAppIDs = nil
+	// Generating the map is not always possible here because the database
+	// can be closed.
 	cachedAppsIDsLock.Unlock()
 }
 
@@ -128,7 +129,7 @@ func (q *Queries) GetApps(teamID string, page, perPage uint64) ([]*types.Applica
 
 // GetAppID resolves a product id (or already-canonical UUID) to the canonical
 // application UUID. Uses a process-wide cache rebuilt on demand and
-// invalidated by InvalidateCachedAppIDs.
+// invalidated by ClearCachedAppIDs.
 func (q *Queries) GetAppID(appOrProductID string) (string, error) {
 	var cachedAppsRef appsCache
 	cachedAppsIDsLock.RLock()

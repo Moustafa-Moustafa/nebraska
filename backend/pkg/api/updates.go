@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
+
+	"github.com/flatcar/nebraska/backend/pkg/api/dbreads"
 )
 
 const (
@@ -24,7 +26,7 @@ var (
 
 	// ErrNoPackageFound indicates that the group doesn't have a channel
 	// assigned or that the channel doesn't have a package assigned.
-	ErrNoPackageFound = errors.New("nebraska: no package found")
+	ErrNoPackageFound = dbreads.ErrNoPackageFound
 
 	// ErrNoUpdatePackageAvailable indicates that the instance requesting the
 	// update has already the latest version of the application.

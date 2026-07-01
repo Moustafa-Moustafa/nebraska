@@ -157,11 +157,6 @@ func (api *API) RemoveChannelPackageFloor(channelID, packageID string) error {
 	return nil
 }
 
-// DefaultMaxFloorsPerResponse is the default maximum number of floor versions
-// to return in a single update response. Mirrors dbreads.DefaultMaxFloorsPerResponse
-// for external callers that still reference it via api.
-const DefaultMaxFloorsPerResponse = 5
-
 // GetChannelFloorPackages forwards to api.queries.
 func (api *API) GetChannelFloorPackages(channelID string) ([]*Package, error) {
 	return api.queries.GetChannelFloorPackages(channelID)

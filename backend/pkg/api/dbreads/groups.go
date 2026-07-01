@@ -114,11 +114,13 @@ var (
 	cachedGroupVersionCountLifespan = time.Minute
 )
 
-// InvalidateCachedGroups clears cachedGroups so the next GetGroupID rebuilds
-// it from the DB. Called by admin group writers after Add/Update/Delete.
-func InvalidateCachedGroups() {
+// UpdateCachedGroups invalidates the cached track names in cachedGroups and
+// must be called whenever the group entries are modified.
+func UpdateCachedGroups() {
 	cachedGroupsLock.Lock()
 	cachedGroups = nil
+	// Generating the map is not always possible here because the database
+	// can be closed.
 	cachedGroupsLock.Unlock()
 }
 
@@ -166,7 +168,7 @@ func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
 
 // GetGroupID returns the ID of the first group matching the given track name
 // and channel architecture for the given app. Backed by an in-memory cache
-// invalidated by InvalidateCachedGroups.
+// invalidated by UpdateCachedGroups.
 func (q *Queries) GetGroupID(appID, trackName string, arch types.Arch) (string, error) {
 	var cachedGroupsRef map[types.GroupDescriptor]string
 	cachedGroupsLock.RLock()

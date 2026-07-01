@@ -161,8 +161,8 @@ func NewWithMigrations(options ...func(*API) error) (*API, error) {
 	if _, err := migrate.Exec(api.db.DB, "postgres", migrations, migrate.Up); err != nil {
 		return nil, err
 	}
-	api.updateCachedGroups()
-	api.clearCachedAppIDs()
+	dbreads.UpdateCachedGroups()
+	dbreads.ClearCachedAppIDs()
 
 	return api, nil
 }
@@ -233,7 +233,7 @@ func OptionInitDB(api *API) error {
 	if _, err := api.db.Exec(string(sqlFile)); err != nil {
 		return err
 	}
-	api.updateCachedGroups()
+	dbreads.UpdateCachedGroups()
 
 	return nil
 }
@@ -268,8 +268,8 @@ func NewForTest(options ...func(*API) error) (*API, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.updateCachedGroups()
-	a.clearCachedAppIDs()
+	dbreads.UpdateCachedGroups()
+	dbreads.ClearCachedAppIDs()
 
 	return a, nil
 }

@@ -114,11 +114,9 @@ func (q *Queries) activityQuery(teamID string, p types.ActivityQueryParams, coun
 	return query
 }
 
-// HasRecentRuntimeActivity reports whether a matching runtime activity row
-// exists in the last 24h. Only runtime classes (1-5) are meaningful here;
-// admin events live in admin_activity and are not returned. Renamed from the
-// previous private hasRecentRuntimeActivity so callers across the package
-// boundary (pkg/api/updates.go writers) can reach it.
+// HasRecentRuntimeActivity reports whether there is matching runtime activity
+// entry in the last 24h. Only runtime classes (1-5) are meaningful here.
+// Admin events live in admin_activity and are not returned here.
 func (q *Queries) HasRecentRuntimeActivity(class int, p types.ActivityQueryParams) bool {
 	recent := time.Now().UTC().Add(-24 * time.Hour)
 

@@ -41,16 +41,3 @@ func New(db *sqlx.DB, maxFloorsPerResponse int) *Queries {
 	}
 	return &Queries{db: db, maxFloorsPerResponse: maxFloorsPerResponse}
 }
-
-// DB exposes the underlying *sqlx.DB. Used by callers that need to issue
-// custom queries outside the Queries surface (currently only pkg/api during
-// the transitional period; will be removed once all reads live here).
-func (q *Queries) DB() *sqlx.DB {
-	return q.db
-}
-
-// MaxFloorsPerResponse reports the configured maximum number of floor
-// versions returned by GetRequiredChannelFloors.
-func (q *Queries) MaxFloorsPerResponse() int {
-	return q.maxFloorsPerResponse
-}
