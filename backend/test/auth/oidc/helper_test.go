@@ -24,7 +24,7 @@ func newDBForTest(t *testing.T) *api.API {
 // adminSvc builds an admin.Service over the given API's shared read queries,
 // matching how the composition root injects it into the server.
 func adminSvc(db *api.API) *admin.Service {
-	return admin.NewService(db.Reads())
+	return admin.NewService(db.Conn(), db.Reads())
 }
 
 // newOIDCMockServer creates a new mockoidc server and returns it.

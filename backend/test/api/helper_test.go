@@ -20,7 +20,7 @@ import (
 // adminSvc returns an admin.Service that reuses db's shared read queries so
 // tests can construct a server with admin write support.
 func adminSvc(db *api.API) *admin.Service {
-	return admin.NewService(db.Reads())
+	return admin.NewService(db.Conn(), db.Reads())
 }
 
 // newDBForTest is a helper function that

@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	migrate "github.com/rubenv/sql-migrate"
 
+	"github.com/flatcar/nebraska/backend/pkg/api/internal/dbconn"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/dbreads"
 	"github.com/flatcar/nebraska/backend/pkg/api/internal/types"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
@@ -64,6 +65,8 @@ type API struct {
 	db       *sqlx.DB
 	dbDriver string
 	dbURL    string
+
+	conn *dbconn.Conn
 
 	*dbreads.Queries
 
@@ -122,7 +125,8 @@ func New(options ...func(*API) error) (*API, error) {
 		maxFloorsPerResponse = dbreads.DefaultMaxFloorsPerResponse
 	}
 
-	api.Queries = dbreads.New(api.db, maxFloorsPerResponse)
+	api.conn = dbconn.New(api.db)
+	api.Queries = dbreads.New(api.conn, maxFloorsPerResponse)
 
 	for _, option := range options {
 		err := option(api)
@@ -242,6 +246,13 @@ func (api *API) Close() {
 // instance.
 func (api *API) Reads() *dbreads.Queries {
 	return api.Queries
+}
+
+// Conn returns the shared database connection owned by this API instance. It is
+// passed to the write services (admin, and later runtime) so they execute
+// writes over the same connection without going through the read layer.
+func (api *API) Conn() *dbconn.Conn {
+	return api.conn
 }
 
 // NewForTest creates a new API instance with given options and fills

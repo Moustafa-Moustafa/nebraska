@@ -76,7 +76,7 @@ func main() {
 	}
 
 	// setup admin service (injected into syncer and the HTTP handlers)
-	adminSvc := admin.NewService(db.Reads())
+	adminSvc := admin.NewService(db.Conn(), db.Reads())
 
 	// setup syncer
 	if conf.EnableSyncer {

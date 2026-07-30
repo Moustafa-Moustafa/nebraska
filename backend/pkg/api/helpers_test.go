@@ -13,7 +13,7 @@ import (
 // adminSvc returns an admin.Service that reuses a's shared read queries so
 // tests can exercise admin write operations (which moved to package admin).
 func adminSvc(a *API) *admin.Service {
-	return admin.NewService(a.Reads())
+	return admin.NewService(a.Conn(), a.Reads())
 }
 
 // Test helper functions to reduce boilerplate in floor tests

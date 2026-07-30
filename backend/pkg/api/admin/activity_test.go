@@ -21,7 +21,7 @@ func TestAdminActivityRouting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, a)
 	defer a.Close()
-	svc := NewService(a.Reads())
+	svc := NewService(a.Conn(), a.Reads())
 
 	tVersion := "12.1.0"
 	tTeam, _ := svc.AddTeam(&types.Team{Name: "test_team_routing"})
