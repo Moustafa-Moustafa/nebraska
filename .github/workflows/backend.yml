@@ -2,6 +2,7 @@ name: Build Backend
 on:
   pull_request:
     paths:
+    - 'backend/api/**'
     - 'backend/cmd/**'
     - 'backend/pkg/**'
     - 'backend/tools/**'
