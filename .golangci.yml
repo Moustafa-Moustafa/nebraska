@@ -4,9 +4,25 @@ run:
   tests: true
 linters:
   enable:
+    - depguard
     - revive
     - whitespace
     - errcheck
+  settings:
+    depguard:
+      rules:
+        handler-runtime:
+          files:
+            - '**/pkg/handler/runtime/*.go'
+          deny:
+            - pkg: github.com/flatcar/nebraska/backend/pkg/api/admin
+              desc: endpoints served on every node must not reach the admin write surface
+        handler-admin:
+          files:
+            - '**/pkg/handler/admin/*.go'
+          deny:
+            - pkg: github.com/flatcar/nebraska/backend/pkg/api/runtime
+              desc: admin endpoints reach runtime state only through LocalUpdatesBrake
   exclusions:
     generated: lax
     presets:
