@@ -1,6 +1,7 @@
 package distributed_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -132,5 +133,46 @@ func TestClearGroupUpdatesOverride(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotImplemented, code)
 		assert.Contains(t, body, "local_override_not_supported")
+	})
+
+	// UpdateGroup is the one admin endpoint that also writes runtime-owned state,
+	// which it reaches through LocalUpdatesBrake.
+	t.Run("single_update_group_clears_the_override", func(t *testing.T) {
+		base, dbURL := singleURL(), singleDBURL()
+
+		setUpdatesOverride(t, dbURL, seededGroupID, false)
+		t.Cleanup(func() { setUpdatesOverride(t, dbURL, seededGroupID, nil) })
+
+		code, before := request(t, "GET", base+group, nil)
+		require.Equal(t, http.StatusOK, code, before)
+		require.Contains(t, before, `"policy_updates_enabled":false`)
+
+		var cfg struct {
+			Name                      string `json:"name"`
+			PolicyMaxUpdatesPerPeriod int    `json:"policy_max_updates_per_period"`
+			PolicyPeriodInterval      string `json:"policy_period_interval"`
+			PolicyTimezone            string `json:"policy_timezone"`
+			PolicyUpdateTimeout       string `json:"policy_update_timeout"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(before), &cfg))
+
+		payload, err := json.Marshal(map[string]any{
+			"name":                          cfg.Name,
+			"policy_max_updates_per_period": cfg.PolicyMaxUpdatesPerPeriod,
+			"policy_period_interval":        cfg.PolicyPeriodInterval,
+			"policy_timezone":               cfg.PolicyTimezone,
+			"policy_update_timeout":         cfg.PolicyUpdateTimeout,
+			"policy_updates_enabled":        true,
+		})
+		require.NoError(t, err)
+
+		code, body := request(t, "PUT", base+group, strings.NewReader(string(payload)))
+		require.Equal(t, http.StatusOK, code, body)
+
+		// The group default is already true, so this can only read true if the
+		// node-local override was cleared.
+		code, after := request(t, "GET", base+group, nil)
+		require.Equal(t, http.StatusOK, code, after)
+		assert.Contains(t, after, `"policy_updates_enabled":true`)
 	})
 }
