@@ -8,38 +8,39 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/flatcar/nebraska/backend/pkg/api"
-	"github.com/flatcar/nebraska/backend/pkg/api/admin"
-	"github.com/flatcar/nebraska/backend/pkg/api/runtime"
 	"github.com/flatcar/nebraska/backend/pkg/auth"
 	"github.com/flatcar/nebraska/backend/pkg/codegen"
 	"github.com/flatcar/nebraska/backend/pkg/config"
+	"github.com/flatcar/nebraska/backend/pkg/handler/admin"
+	"github.com/flatcar/nebraska/backend/pkg/handler/runtime"
 	"github.com/flatcar/nebraska/backend/pkg/logger"
-	"github.com/flatcar/nebraska/backend/pkg/omaha"
 	"github.com/flatcar/nebraska/backend/pkg/version"
 )
 
-const (
-	UpdateMaxRequestSize      = 64 * 1024
-	GithubAccessManagementURL = "https://github.com/settings/apps/authorizations"
+const GithubAccessManagementURL = "https://github.com/settings/apps/authorizations"
+
+// Go names an embedded field after its unqualified type name, and both
+// sub-handlers are called Handler, so they are embedded through these aliases.
+type (
+	adminHandler   = admin.Handler
+	runtimeHandler = runtime.Handler
 )
 
+// Handler serves the endpoints that touch no database and composes the two
+// role-scoped sub-handlers. It holds neither write service.
 type Handler struct {
-	db           *api.API
-	admin        *admin.Service
-	runtime      *runtime.Service
-	omahaHandler *omaha.Handler
-	conf         *config.Config
-	clientConf   *codegen.Config
-	auth         auth.Authenticator
+	*adminHandler
+	*runtimeHandler
+
+	clientConf *codegen.Config
+	auth       auth.Authenticator
 }
 
-var defaultPage = 1
-var defaultPerPage = 10
+var _ codegen.ServerInterface = (*Handler)(nil)
 
 var l = logger.New("nebraska")
 
-func New(db *api.API, adminSvc *admin.Service, runtimeSvc *runtime.Service, conf *config.Config, auth auth.Authenticator) (*Handler, error) {
+func New(adminH *admin.Handler, runtimeH *runtime.Handler, conf *config.Config, auth auth.Authenticator) (*Handler, error) {
 	clientConfig := &codegen.Config{
 		AuthMode:        conf.AuthMode,
 		NebraskaVersion: version.Version,
@@ -86,7 +87,12 @@ func New(db *api.API, adminSvc *admin.Service, runtimeSvc *runtime.Service, conf
 		}
 	}
 
-	return &Handler{db, adminSvc, runtimeSvc, omaha.NewHandler(runtimeSvc), conf, clientConfig, auth}, nil
+	return &Handler{
+		adminHandler:   adminH,
+		runtimeHandler: runtimeH,
+		clientConf:     clientConfig,
+		auth:           auth,
+	}, nil
 }
 
 func (h *Handler) Health(ctx echo.Context) error {
