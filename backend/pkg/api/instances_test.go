@@ -1,12 +1,14 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/guregu/null.v4"
 
 	"github.com/flatcar/nebraska/backend/pkg/api/runtime"
@@ -373,4 +375,58 @@ func TestUpdateInstanceStatsNoArch(t *testing.T) {
 	assert.Equal(t, "", instanceStats[0].Arch)
 	assert.Equal(t, "1.0.0", instanceStats[0].Version)
 	assert.Equal(t, 1, instanceStats[0].Instances)
+}
+
+func TestGetInstanceInOneQueryMatchesGetInstance(t *testing.T) {
+	a := newForTest(t)
+	defer a.Close()
+	as := adminSvc(a)
+
+	tTeam, err := as.AddTeam(&types.Team{Name: "test_team"})
+	require.NoError(t, err)
+	tApp, err := as.AddApp(&types.Application{Name: "test_app", TeamID: tTeam.ID})
+	require.NoError(t, err)
+	tApp2, err := as.AddApp(&types.Application{Name: "test_app2", TeamID: tTeam.ID})
+	require.NoError(t, err)
+	group, err := as.AddGroup(&types.Group{Name: "group", ApplicationID: tApp.ID, PolicyUpdatesEnabled: true,
+		PolicyPeriodInterval: "15 minutes", PolicyMaxUpdatesPerPeriod: 2, PolicyUpdateTimeout: "60 minutes"})
+	require.NoError(t, err)
+
+	type appRow struct {
+		app        string
+		groupID    null.String
+		status     null.Int
+		lastUpdate null.String
+		inProgress bool
+		checkedAgo time.Duration
+	}
+	cases := map[string]*appRow{
+		"no application row":         nil,
+		"recent, all values":         {app: tApp.ID, groupID: null.StringFrom(group.ID), status: null.IntFrom(2), lastUpdate: null.StringFrom("2.0.0"), inProgress: true, checkedAgo: time.Minute},
+		"recent, nulls":              {app: tApp.ID, checkedAgo: time.Minute},
+		"checked 2 days ago":         {app: tApp.ID, groupID: null.StringFrom(group.ID), status: null.IntFrom(4), checkedAgo: 48 * time.Hour},
+		"row for another app only":   {app: tApp2.ID, checkedAgo: time.Minute},
+		"recent, checked 23h59m ago": {app: tApp.ID, status: null.IntFrom(4), checkedAgo: 24*time.Hour - time.Minute},
+	}
+	for name, c := range cases {
+		id := uuid.NewString()
+		_, err := a.db().Exec("insert into instance (id, ip, alias, oem, aleph_version) values ($1, '10.0.0.1', 'alias', 'azure', '1.0.0')", id)
+		require.NoError(t, err)
+		if c != nil {
+			_, err = a.db().Exec(`insert into instance_application (instance_id, application_id, group_id, version, status,
+				last_check_for_updates, last_update_version, update_in_progress) values ($1, $2, $3, '1.0.0', $4, $5, $6, $7)`,
+				id, c.app, c.groupID, c.status, time.Now().Add(-c.checkedAgo), c.lastUpdate, c.inProgress)
+			require.NoError(t, err)
+		}
+		want, err := a.GetInstance(id, tApp.ID)
+		require.NoError(t, err, name)
+		got, err := a.GetInstanceInOneQuery(id, tApp.ID)
+		require.NoError(t, err, name)
+		assert.Equal(t, want, got, name)
+	}
+
+	_, err = a.GetInstance(uuid.NewString(), tApp.ID)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	_, err = a.GetInstanceInOneQuery(uuid.NewString(), tApp.ID)
+	require.ErrorIs(t, err, sql.ErrNoRows)
 }

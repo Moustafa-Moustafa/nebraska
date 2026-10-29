@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Channel edit dialog filters out blacklisted packages from selection
   - Floor package selection prevents choosing blacklisted packages with clear visual feedback
 - Improved reverse domain ID validation regex to eliminate inefficient nested quantifiers flagged by CodeQL, and extracted it into a shared constant with tests. ([#1222](https://github.com/flatcar/nebraska/pull/1222))
+- **Update checks do much less database work:** An update check from an up-to-date client now runs 3 to 5 database statements instead of 13 to 27, depending on whether it comes with a ping and an event, and a progress report runs 5 instead of 17. The rollout policy and the check for a finished rollout no longer count every instance in the group on each call, which took about half a second with a million instances and could overload the database during a large rollout. They now stop at the policy limit, or at the first instance that has not finished. Three new indexes on `instance_application` keep these reads short, and six redundant indexes are dropped ([#1447](https://github.com/flatcar/nebraska/issues/1447)), so a check-in writes about 15% less than before. The upgrade builds the new indexes in about 3 seconds with a million instances, and check-ins wait while they build. Update responses and rollout decisions do not change, apart from the fix listed under Bugfixes.
 ### Removed
 ### Bugfixes
 
@@ -46,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fixed deleting an application or group on a control node leaving behind the rows each edge writes itself (`group_local`, `activity`, `event`, `instance_application`, `instance_status_history`). Logical replication skips foreign key actions on a subscriber, so two triggers now repeat them there. ([#1632](https://github.com/flatcar/nebraska/issues/1632))
 - Fixed saving a group on a control node copying its safe-mode brake into the shared default, which paused updates on every edge. A node's own overrides are now returned separately under `local_overrides`. ([#1631](https://github.com/flatcar/nebraska/issues/1631))
 - Fixed `nebraska_application_instances_per_channel` counting instances that stopped checking in, and dropping instances whose group has no channel assigned. ([#1653](https://github.com/flatcar/nebraska/pull/1653))
+- Fixed an update check sent without a ping getting no update when the instance had not checked in for over a day, or not yet for that application: the grant failed with `invalid input syntax for type uuid`. Such a check now gets the same answer as one sent with a ping. Clients that send a ping with every update check were not affected.
 
 ## [4.0.0] - 02/09/2026
 

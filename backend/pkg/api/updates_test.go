@@ -132,6 +132,35 @@ func TestGetUpdatePackage_MaxUpdatesPerPeriodLimitReached_LimitUpdated(t *testin
 	assert.NoError(t, err)
 }
 
+// A refused instance is put on hold, and only once while it stays refused.
+func TestGetUpdatePackage_RefusedInstanceIsPutOnHold(t *testing.T) {
+	a := newForTest(t)
+	defer a.Close()
+	as := adminSvc(a)
+	rs := runtimeSvc(a)
+
+	tTeam, _ := as.AddTeam(&types.Team{Name: "test_team"})
+	tApp, _ := as.AddApp(&types.Application{Name: "test_app", TeamID: tTeam.ID})
+	tPkg, _ := as.AddPackage(&types.Package{Type: types.PkgTypeOther, URL: "http://sample.url/pkg", Version: "12.1.0", ApplicationID: tApp.ID})
+	tChannel, _ := as.AddChannel(&types.Channel{Name: "test_channel", Color: "blue", ApplicationID: tApp.ID, PackageID: null.StringFrom(tPkg.ID)})
+	tGroup, _ := as.AddGroup(&types.Group{Name: "group", ApplicationID: tApp.ID, ChannelID: null.StringFrom(tChannel.ID), PolicyUpdatesEnabled: true, PolicySafeMode: false, PolicyPeriodInterval: "15 minutes", PolicyMaxUpdatesPerPeriod: 1, PolicyUpdateTimeout: "60 minutes"})
+	instApp := runtime.NewInstanceApplication(tApp.ID, tGroup.ID, "12.0.0")
+
+	_, err := rs.GetUpdatePackage(types.Instance{ID: uuid.New().String(), IP: "10.0.0.1"}, instApp)
+	assert.NoError(t, err)
+
+	refused := types.Instance{ID: uuid.New().String(), IP: "10.0.0.2"}
+	for check := 1; check <= 2; check++ {
+		_, err := rs.GetUpdatePackage(refused, instApp)
+		assert.Equal(t, types.ErrMaxUpdatesPerPeriodLimitReached, err)
+		instance, _ := a.GetInstance(refused.ID, tApp.ID)
+		assert.Equal(t, null.IntFrom(int64(types.InstanceStatusOnHold)), instance.Application.Status)
+		var onHold int
+		assert.NoError(t, a.db().Get(&onHold, "select count(*) from instance_status_history where instance_id = $1 and status = $2", refused.ID, types.InstanceStatusOnHold))
+		assert.Equal(t, 1, onHold, "check %d", check)
+	}
+}
+
 func TestGetUpdatePackage_MaxTimedOutUpdatesLimitReached_SafeMode(t *testing.T) {
 	a := newForTest(t)
 	defer a.Close()

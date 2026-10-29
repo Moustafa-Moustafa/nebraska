@@ -2,6 +2,7 @@ package dbreads
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -63,13 +64,13 @@ func sanitizeSortFilterParams(sortFilter string) string {
 // GetInstance returns the instance identified by the id provided.
 func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error) {
 	var instance types.Instance
-	query, _, err := goqu.From("instance").
+	query, args, err := PGDialect.From("instance").Prepared(true).
 		Where(goqu.C("id").Eq(instanceID)).
 		ToSQL()
 	if err != nil {
 		return nil, err
 	}
-	err = q.db.QueryRowx(query).StructScan(&instance)
+	err = q.db.QueryRowx(query, args...).StructScan(&instance)
 	if err != nil {
 		return nil, err
 	}
@@ -88,13 +89,47 @@ func (q *Queries) GetInstance(instanceID, appID string) (*types.Instance, error)
 
 	return &instance, nil
 }
-func (q *Queries) getInstanceApp(appID, instanceID string, duration postgresDuration, sortFilter string, orderOfSort sortOrder) (*types.InstanceApplication, error) {
-	var instanceApp types.InstanceApplication
-	query, _, err := q.instanceAppQuery(appID, instanceID, duration, sortFilter, orderOfSort).ToSQL()
+
+// GetInstanceInOneQuery returns what GetInstance returns for a valid
+// application id, in one statement instead of two. The application row comes
+// back as JSON, with the columns GetInstance reads.
+func (q *Queries) GetInstanceInOneQuery(instanceID, appID string) (*types.Instance, error) {
+	application := prepareInstanceAppQuery().WithDialect("postgres").Where(
+		goqu.I("instance_id").Eq(goqu.I("i.id")),
+		goqu.L("application_id = ?::text::uuid", appID),
+		goqu.L("last_check_for_updates > now() at time zone 'utc' - ?::text::interval", validityInterval))
+	query, args, err := PGDialect.From(goqu.T("instance").As("i")).Prepared(true).
+		Select(goqu.L("i.*"), goqu.L("(SELECT to_jsonb(ia) FROM ? ia)", application).As("application_json")).
+		Where(goqu.I("i.id").Eq(instanceID)).
+		ToSQL()
 	if err != nil {
 		return nil, err
 	}
-	err = q.db.QueryRowx(query).StructScan(&instanceApp)
+	var row struct {
+		types.Instance
+		ApplicationJSON []byte `db:"application_json"`
+	}
+	if err := q.db.QueryRowx(query, args...).StructScan(&row); err != nil {
+		return nil, err
+	}
+	instance := row.Instance
+	if row.ApplicationJSON != nil {
+		if err := json.Unmarshal(row.ApplicationJSON, &instance.Application); err != nil {
+			return nil, err
+		}
+		// Match the location the driver gives a scanned timestamptz.
+		instance.Application.LastCheckForUpdates = instance.Application.LastCheckForUpdates.In(time.Local)
+	}
+	return &instance, nil
+}
+
+func (q *Queries) getInstanceApp(appID, instanceID string, duration postgresDuration, sortFilter string, orderOfSort sortOrder) (*types.InstanceApplication, error) {
+	var instanceApp types.InstanceApplication
+	query, args, err := q.instanceAppQuery(appID, instanceID, duration, sortFilter, orderOfSort).ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	err = q.db.QueryRowx(query, args...).StructScan(&instanceApp)
 	if err != nil {
 		return nil, err
 	}
@@ -254,8 +289,9 @@ func (q *Queries) GetInstancesCount(p types.InstancesQueryParams, duration strin
 // instanceAppQuery returns a SelectDataset prepared to return the app status
 // of the app identified by the application id provided for a given instance.
 func (q *Queries) instanceAppQuery(appID, instanceID string, duration postgresDuration, sortFilter string, orderOfSort sortOrder) *goqu.SelectDataset {
-	query := prepareInstanceAppQuery().Where(goqu.C("application_id").Eq(appID)).
-		Where(goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", duration))
+	query := prepareInstanceAppQuery().WithDialect("postgres").Prepared(true).
+		Where(goqu.C("application_id").Eq(appID)).
+		Where(goqu.L("last_check_for_updates > now() at time zone 'utc' - ?::text::interval", duration))
 
 	if instanceID != "" {
 		query = query.Where(goqu.C("instance_id").Eq(instanceID))

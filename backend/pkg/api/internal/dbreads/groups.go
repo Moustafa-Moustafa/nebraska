@@ -2,6 +2,7 @@ package dbreads
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -96,6 +97,69 @@ func (q *Queries) GetGroup(groupID string) (*types.Group, error) {
 		}
 	}
 	return &group, nil
+}
+
+// groupChannelJSON is the group's channel as JSON, with its package and the
+// package's blacklist, action and extra files nested in it, as GetGroup returns
+// them. The keys are the column names, which the types' JSON tags match. Like
+// GetGroup, it takes whichever action row comes first. GetGroup fails on an
+// action with a NULL column, so such an action is replaced by a JSON string,
+// which fails to decode.
+const groupChannelJSON = `(
+	SELECT to_jsonb(c) || jsonb_build_object('package', (
+		SELECT to_jsonb(p) || jsonb_build_object(
+			'channels_blacklist', (SELECT array_agg(channel_id) FROM package_channel_blacklist WHERE package_id = p.id),
+			'flatcar_action', (SELECT CASE WHEN to_jsonb(a) = jsonb_strip_nulls(to_jsonb(a)) THEN to_jsonb(a) ELSE '"flatcar_action has a NULL"' END
+				FROM flatcar_action a WHERE a.package_id = p.id LIMIT 1),
+			'extra_files', (SELECT jsonb_agg(f ORDER BY f.id) FROM package_file f WHERE f.package_id = p.id))
+		FROM package p WHERE p.id = c.package_id))
+	FROM channel c WHERE c.id = groups.channel_id)`
+
+// GetGroupInOneQuery returns what GetGroup returns, in one statement instead
+// of five.
+func (q *Queries) GetGroupInOneQuery(groupID string) (*types.Group, error) {
+	query, args, err := q.groupsQuery().WithDialect("postgres").Prepared(true).
+		SelectAppend(goqu.L(groupChannelJSON).As("channel_json")).
+		// PostgreSQL parses the id, as it did when GetGroup inlined it.
+		Where(goqu.L("groups.id = ?::text::uuid", groupID)).
+		ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	var row struct {
+		types.Group
+		ChannelJSON []byte `db:"channel_json"`
+	}
+	if err := q.db.QueryRowx(query, args...).StructScan(&row); err != nil {
+		return nil, err
+	}
+	group := row.Group
+	if row.ChannelJSON != nil {
+		if err := json.Unmarshal(row.ChannelJSON, &group.Channel); err != nil {
+			return nil, err
+		}
+		asScanned(group.Channel)
+	}
+	return &group, nil
+}
+
+// asScanned makes a channel decoded from JSON equal to the one GetGroup scans:
+// times in the location the driver gives a timestamptz, and the action's
+// package id, which its JSON tag leaves out.
+func asScanned(c *types.Channel) {
+	c.CreatedTs = c.CreatedTs.In(time.Local)
+	p := c.Package
+	if p == nil {
+		return
+	}
+	p.CreatedTs = p.CreatedTs.In(time.Local)
+	if a := p.FlatcarAction; a != nil {
+		a.CreatedTs = a.CreatedTs.In(time.Local)
+		a.PackageID = p.ID
+	}
+	for i := range p.ExtraFiles {
+		p.ExtraFiles[i].CreatedTs = p.ExtraFiles[i].CreatedTs.In(time.Local)
+	}
 }
 
 // GetGroupID returns the ID of the first group identified by the track name and the channel architecture.
@@ -232,35 +296,101 @@ func (q *Queries) getGroupsFromQuery(query string) ([]*types.Group, error) {
 	return groups, nil
 }
 
-// GetGroupUpdatesStats returns a set of statistics about the distribution of
-// updates and their status in the group provided.
-func (q *Queries) GetGroupUpdatesStats(group *types.Group) (*types.UpdatesStats, error) {
-	var updatesStats types.UpdatesStats
+// activeGroupInstances is the FROM/WHERE shared by the rollout queries below:
+// $1 group id, $2 validity interval.
+//
+// Each query below orders by the columns of the index it should use. Without
+// the ORDER BY, PostgreSQL can choose to scan the whole table instead: its
+// statistics cover all groups, so rows that only another group has make a
+// match look close.
+var activeGroupInstances = `FROM instance_application
+	WHERE group_id = $1 AND last_check_for_updates > now() at time zone 'utc' - $2::text::interval
+	AND ` + ignoreFakeInstanceCondition("instance_id")
 
-	packageVersion := ""
+// updatesAttempted counts the active instances that finished an update to the
+// version in parameter versionParam. It stops at 2, as callers only tell 0 and
+// 1 apart.
+func updatesAttempted(versionParam string) string {
+	return fmt.Sprintf(`(SELECT count(*) FROM (SELECT 1 %s
+	AND NOT update_in_progress AND last_update_version = %s ORDER BY version, last_update_version LIMIT 2) s)`,
+		activeGroupInstances, versionParam)
+}
+
+// Each count stops at the cap, so the cost follows the policy limit and the
+// updates in flight rather than the group size.
+var rolloutPolicyStatsSQL = fmt.Sprintf(`SELECT
+	(SELECT count(*) FROM (SELECT 1 %[1]s
+		AND last_update_granted_ts > now() at time zone 'utc' - $3::text::interval
+		ORDER BY last_update_granted_ts LIMIT $5) s) AS updates_granted_in_last_period,
+	(SELECT count(*) FROM (SELECT 1 %[1]s
+		AND update_in_progress AND now() at time zone 'utc' - last_update_granted_ts <= $4::text::interval
+		ORDER BY last_update_granted_ts LIMIT $5) s) AS updates_in_progress,
+	(SELECT count(*) FROM (SELECT 1 %[1]s
+		AND update_in_progress AND now() at time zone 'utc' - last_update_granted_ts > $4::text::interval
+		ORDER BY last_update_granted_ts LIMIT $5) s) AS updates_timed_out,
+	CASE WHEN $6::boolean THEN %[2]s ELSE 0 END AS updates_to_current_version_attempted`,
+	activeGroupInstances, updatesAttempted("$7"))
+
+var updatesAttemptedSQL = "SELECT " + updatesAttempted("$3")
+
+// noActiveInstance is true when no active instance matches condition. It is a
+// subquery rather than NOT EXISTS because PostgreSQL drops the ORDER BY of an
+// EXISTS subquery.
+func noActiveInstance(condition, orderBy string) string {
+	return fmt.Sprintf(`(SELECT 1 %s AND %s ORDER BY %s LIMIT 1) IS NULL`, activeGroupInstances, condition, orderBy)
+}
+
+// An instance blocks completion if it is updating, is not on $3, or is on $3
+// without $3 as its last granted version. Each test is a range on an index, so
+// proving that no such instance exists does not walk the whole group.
+var groupRolloutCompleteSQL = "SELECT " + strings.Join([]string{
+	noActiveInstance("update_in_progress", "last_update_granted_ts"),
+	noActiveInstance("version < $3", "version"),
+	noActiveInstance("version > $3", "version"),
+	noActiveInstance("version = $3 AND last_update_version IS NULL", "last_update_version"),
+	noActiveInstance("version = $3 AND last_update_version < $3", "last_update_version"),
+	noActiveInstance("version = $3 AND last_update_version > $3", "last_update_version"),
+}, "\n\tAND ")
+
+// GetGroupRolloutPolicyStats returns, from one statement, the counts the
+// rollout policy compares with its limit. UpdatesToCurrentVersionAttempted is
+// only read if withAttempted is set, and is 0 otherwise.
+//
+// Each of the three stops at max(limit, 1), so comparing it with the limit, or
+// with 1 when safe mode lowers the limit, gives the same answer as the full
+// count. Attempted stops at 2.
+func (q *Queries) GetGroupRolloutPolicyStats(group *types.Group, limit int, withAttempted bool) (*types.UpdatesStats, error) {
+	var stats types.UpdatesStats
+	err := q.db.QueryRowx(rolloutPolicyStatsSQL, group.ID, validityInterval,
+		group.PolicyPeriodInterval, group.PolicyUpdateTimeout, max(limit, 1),
+		withAttempted, groupPackageVersion(group)).StructScan(&stats)
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
+// CountGroupUpdatesToCurrentVersionAttempted returns
+// UpdatesToCurrentVersionAttempted for the group, capped at 2.
+func (q *Queries) CountGroupUpdatesToCurrentVersionAttempted(group *types.Group) (int, error) {
+	var attempted int
+	err := q.db.QueryRowx(updatesAttemptedSQL, group.ID, validityInterval, groupPackageVersion(group)).Scan(&attempted)
+	return attempted, err
+}
+
+// IsGroupRolloutComplete reports whether every active instance in the group has
+// successfully updated to the group's current package version.
+func (q *Queries) IsGroupRolloutComplete(group *types.Group) (bool, error) {
+	var complete bool
+	err := q.db.QueryRowx(groupRolloutCompleteSQL, group.ID, validityInterval, groupPackageVersion(group)).Scan(&complete)
+	return complete, err
+}
+
+func groupPackageVersion(group *types.Group) string {
 	if group.Channel != nil && group.Channel.Package != nil {
-		packageVersion = group.Channel.Package.Version
+		return group.Channel.Package.Version
 	}
-	query, _, err := goqu.From("instance_application").Select(
-		goqu.COUNT("*").As("total_instances"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when last_update_version = ? then 1 else 0 end", packageVersion)), 0).As("updates_to_current_version_granted"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'false' and last_update_version = ? then 1 else 0 end", packageVersion)), 0).As("updates_to_current_version_attempted"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'false' and last_update_version = ? and last_update_version = version then 1 else 0 end", packageVersion)), 0).As("updates_to_current_version_succeeded"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'false' and last_update_version = ? and last_update_version != version then 1 else 0 end", packageVersion)), 0).As("updates_to_current_version_failed"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when last_update_granted_ts > now() at time zone 'utc' - interval ? then 1 else 0 end", group.PolicyPeriodInterval)), 0).As("updates_granted_in_last_period"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'true' and now() at time zone 'utc' - last_update_granted_ts <= interval ? then 1 else 0 end", group.PolicyUpdateTimeout)), 0).As("updates_in_progress"),
-		goqu.COALESCE(goqu.SUM(goqu.L("case when update_in_progress = 'true' and now() at time zone 'utc' - last_update_granted_ts > interval ? then 1 else 0 end", group.PolicyUpdateTimeout)), 0).As("updates_timed_out"),
-	).Where(goqu.C("group_id").Eq(group.ID), goqu.L("last_check_for_updates > now() at time zone 'utc' - interval ?", validityInterval),
-		goqu.L(ignoreFakeInstanceCondition("instance_id")),
-	).ToSQL()
-	if err != nil {
-		return nil, err
-	}
-	err = q.db.QueryRowx(query).StructScan(&updatesStats)
-	if err != nil {
-		return nil, err
-	}
-	return &updatesStats, nil
+	return ""
 }
 
 // groupsQuery returns a SelectDataset prepared to return all groups. It joins

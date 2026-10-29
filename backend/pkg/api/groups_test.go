@@ -1,6 +1,9 @@
 package api
 
 import (
+	"database/sql"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,7 +44,7 @@ func TestAddGroup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, group.PolicyUpdatesEnabled)
 
-	_, err = a.GetGroupUpdatesStats(group)
+	_, err = a.GetGroupRolloutPolicyStats(group, group.PolicyMaxUpdatesPerPeriod, group.PolicySafeMode)
 	assert.NoError(t, err)
 
 	groupX, err := a.GetGroup(group.ID)
@@ -82,7 +85,7 @@ func TestUpdateGroup(t *testing.T) {
 	err := as.UpdateGroup(group)
 	assert.NoError(t, err)
 
-	_, err = a.GetGroupUpdatesStats(group)
+	_, err = a.GetGroupRolloutPolicyStats(group, group.PolicyMaxUpdatesPerPeriod, group.PolicySafeMode)
 	assert.NoError(t, err)
 
 	groupX, _ := a.GetGroup(group.ID)
@@ -378,4 +381,108 @@ func TestGetVersionCountTimelineRejectsSQLInjection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before.Secret, after.Secret,
 		"malicious groupID must not execute a database write")
+}
+
+func TestGetGroupInOneQueryMatchesGetGroup(t *testing.T) {
+	a := newForTest(t)
+	defer a.Close()
+	as := adminSvc(a)
+
+	tTeam, err := as.AddTeam(&types.Team{Name: "test_team"})
+	require.NoError(t, err)
+	tApp, err := as.AddApp(&types.Application{Name: "test_app", TeamID: tTeam.ID})
+	require.NoError(t, err)
+
+	addPkg := func(version string, arch types.Arch, action *types.FlatcarAction, files []types.File, labels types.Labels) *types.Package {
+		p, err := as.AddPackage(&types.Package{Type: types.PkgTypeFlatcar, URL: "http://sample.url/pkg", Version: version,
+			ApplicationID: tApp.ID, Arch: arch, Filename: null.StringFrom("update.gz"), Size: null.StringFrom("123"),
+			Hash: null.StringFrom("aGFzaA=="), FlatcarAction: action, ExtraFiles: files, Labels: labels})
+		require.NoError(t, err)
+		return p
+	}
+	addChannel := func(name string, arch types.Arch, pkg *types.Package) *types.Channel {
+		c := &types.Channel{Name: name, Color: "blue", ApplicationID: tApp.ID, Arch: arch}
+		if pkg != nil {
+			c.PackageID = null.StringFrom(pkg.ID)
+		}
+		c, err := as.AddChannel(c)
+		require.NoError(t, err)
+		return c
+	}
+	groups := map[string]string{}
+	addGroup := func(name string, channel *types.Channel) {
+		g := &types.Group{Name: name, ApplicationID: tApp.ID, Track: name, PolicyUpdatesEnabled: true, PolicySafeMode: true,
+			PolicyTimezone: null.StringFrom("Europe/Berlin"), PolicyPeriodInterval: "15 minutes", PolicyMaxUpdatesPerPeriod: 2, PolicyUpdateTimeout: "60 minutes"}
+		if channel != nil {
+			g.ChannelID = null.StringFrom(channel.ID)
+		}
+		g, err := as.AddGroup(g)
+		require.NoError(t, err)
+		groups[name] = g.ID
+	}
+
+	action := &types.FlatcarAction{Event: "postinstall", ChromeOSVersion: "", Sha256: "c2hh", NeedsAdmin: false, IsDelta: false,
+		DisablePayloadBackoff: true, MetadataSignatureRsa: "", MetadataSize: "", Deadline: ""}
+	files := []types.File{{Name: null.StringFrom("b.raw"), Size: null.StringFrom("2"), Hash: null.StringFrom("aA=="), Hash256: null.StringFrom("bB==")},
+		{Name: null.StringFrom("a.raw"), Size: null.StringFrom("1")}}
+
+	addGroup("no channel", nil)
+	addGroup("channel without package", addChannel("bare", types.ArchAMD64, nil))
+	addGroup("plain package", addChannel("plain", types.ArchAMD64, addPkg("1.0.0", types.ArchAMD64, nil, nil, nil)))
+	full := addPkg("2.0.0", types.ArchAArch64, action, files, types.Labels{"tier": "gold", "zone": "a"})
+	fullChannel := addChannel("full", types.ArchAArch64, full)
+	addGroup("package with action, files and blacklist", fullChannel)
+	other := addChannel("other", types.ArchAArch64, nil)
+	_, err = a.db().Exec("insert into package_channel_blacklist (package_id, channel_id) values ($1, $2), ($1, $3)", full.ID, other.ID, fullChannel.ID)
+	require.NoError(t, err)
+	addGroup("local overrides", addChannel("local", types.ArchAMD64, addPkg("3.0.0", types.ArchAMD64, action, nil, nil)))
+	_, err = a.db().Exec(`update group_local set rollout_in_progress = true, policy_safe_mode_override = false,
+		policy_max_updates_per_period_override = 9, policy_timezone_override = 'UTC' where group_id = $1`, groups["local overrides"])
+	require.NoError(t, err)
+
+	for name, id := range groups {
+		want, err := a.GetGroup(id)
+		require.NoError(t, err, name)
+		got, err := a.GetGroupInOneQuery(id)
+		require.NoError(t, err, name)
+		// The blacklist is an unordered aggregate in both queries.
+		if want.Channel != nil && want.Channel.Package != nil {
+			slices.Sort(want.Channel.Package.ChannelsBlacklist)
+			slices.Sort(got.Channel.Package.ChannelsBlacklist)
+		}
+		assert.Equal(t, want, got, name)
+	}
+	g, err := a.GetGroupInOneQuery(groups["package with action, files and blacklist"])
+	require.NoError(t, err)
+	require.Len(t, g.Channel.Package.ExtraFiles, 2)
+	require.Len(t, g.Channel.Package.ChannelsBlacklist, 2)
+	require.NotNil(t, g.Channel.Package.FlatcarAction)
+	require.Equal(t, types.Labels{"tier": "gold", "zone": "a"}, g.Channel.Package.Labels)
+
+	_, err = a.GetGroup(uuid.NewString())
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	_, err = a.GetGroupInOneQuery(uuid.NewString())
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	// Other spellings of the id behave as they did in GetGroup.
+	id := groups["plain package"]
+	for _, spelling := range []string{"{" + id + "}", strings.ToUpper(id), strings.ReplaceAll(id, "-", ""), "urn:uuid:" + id, "not-a-uuid", ""} {
+		want, wantErr := a.GetGroup(spelling)
+		got, gotErr := a.GetGroupInOneQuery(spelling)
+		assert.Equal(t, wantErr == nil, gotErr == nil, spelling)
+		assert.Equal(t, want, got, spelling)
+	}
+
+	// GetGroup fails when an action column it reads into a plain Go type is NULL.
+	id = groups["package with action, files and blacklist"]
+	for _, column := range []string{"event", "needs_admin"} {
+		_, err = a.db().Exec("update flatcar_action set event = 'postinstall', needs_admin = false where package_id = $1", full.ID)
+		require.NoError(t, err)
+		_, err = a.db().Exec("update flatcar_action set "+column+" = NULL where package_id = $1", full.ID)
+		require.NoError(t, err)
+		_, err = a.GetGroup(id)
+		require.Error(t, err, column)
+		_, err = a.GetGroupInOneQuery(id)
+		require.Error(t, err, column)
+	}
 }
